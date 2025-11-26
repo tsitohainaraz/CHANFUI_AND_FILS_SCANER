@@ -108,7 +108,7 @@ def do_logout():
         if k in st.session_state:
             del st.session_state[k]
     # Rerun to effect logout
-    st.experimental_rerun()
+    st.rerun()
 
 def login_block():
     st.markdown("### 🔐 Connexion")
@@ -121,7 +121,7 @@ def login_block():
             st.session_state.user_matricule = mat
             st.success("Connexion OK — Bienvenue " + st.session_state.user_nom)
             time.sleep(0.3)
-            st.experimental_rerun()
+            st.rerun()
         else:
             st.error("Accès refusé — Nom ou matricule invalide")
 
@@ -411,7 +411,7 @@ if img:
         new_row = pd.DataFrame([{"article": "", "bouteilles": 0}])
         edited_df = pd.concat([edited_df, new_row], ignore_index=True)
         st.session_state["edited_articles_df"] = edited_df
-        st.experimental_rerun()
+        st.rerun()
 
     st.session_state["edited_articles_df"] = edited_df.copy()
 
