@@ -1,5 +1,5 @@
 # app.py
-# ChanFui OCR — Streamlit Cloud ready (PIL preprocessing, Google Vision, Google Sheets, Noir & Or theme)
+# Chan Foui et Fils — OCR Facture (Google Vision + Google Sheets) — Noir & Or theme
 # Place CF_LOGOS.png next to this file and configure .streamlit/secrets.toml as in the template below.
 
 import streamlit as st
@@ -7,7 +7,6 @@ import numpy as np
 import re
 import time
 import os
-import json
 from datetime import datetime
 from io import BytesIO
 from PIL import Image, ImageFilter, ImageOps
@@ -20,23 +19,29 @@ import pandas as pd
 # ---------------------------
 # Page config
 # ---------------------------
-st.set_page_config(page_title="ChanFui OCR PRO", layout="centered", page_icon="🍷", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Chan Foui et Fils — OCR", layout="centered", page_icon="🍷", initial_sidebar_state="collapsed")
 
 # ---------------------------
 # Logo + Top bar (Noir & Or)
 # ---------------------------
 LOGO_FILENAME = "CF_LOGOS.png"
-if os.path.exists(LOGO_FILENAME):
-    with st.container():
-        cols = st.columns([1, 4])
-        try:
+with st.container():
+    cols = st.columns([0.8, 4, 1])
+    try:
+        if os.path.exists(LOGO_FILENAME):
             logo = Image.open(LOGO_FILENAME).convert("RGBA")
-            cols[0].image(logo, width=90)
-        except Exception:
-            cols[0].write("")  # ignore logo error
-        cols[1].markdown("<h1 style='margin:0;color:#D4AF37;font-family:Georgia'>ChanFui & Fils</h1><div style='color:#E6D8B8'>Google Vision — Edition Premium</div>", unsafe_allow_html=True)
-else:
-    st.markdown("<h1 style='color:#D4AF37;font-family:Georgia'>ChanFui & Fils</h1><div style='color:#E6D8B8'>Google Vision — Edition Premium</div>", unsafe_allow_html=True)
+            cols[0].image(logo, width=72)
+        cols[1].markdown(
+            """
+            <div style="line-height:1;">
+              <h1 style="margin:0;font-family:Georgia, serif;color:#D4AF37;font-size:34px">Chan Foui et Fils</h1>
+              <div style="color:#E6D8B8;margin-top:4px;font-weight:500">Google Vision — Edition Premium</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    except Exception:
+        cols[1].markdown("<h1 style='color:#D4AF37;font-family:Georgia'>Chan Foui et Fils</h1>", unsafe_allow_html=True)
 
 # ---------------------------
 # CSS Theme (Noir & Or accents)
@@ -45,54 +50,63 @@ st.markdown(
     """
     <style>
     :root{
-      --bg:#0b0b0b;
-      --card:#121212;
+      --bg:#070707;
+      --card:#0f0f0f;
       --muted:#bfb1a1;
       --gold:#D4AF37;
-      --soft:#2b2b2b;
+      --soft:#161414;
+      --glass: rgba(255,255,255,0.02);
     }
     html, body, [data-testid='stAppViewContainer']{
-      background: linear-gradient(180deg, #070707, #0f0f0f);
+      background: linear-gradient(180deg, var(--bg), #0b0b0b);
       color: #e9e2d0;
+      font-family: 'Inter', sans-serif;
     }
     .stButton>button {
-      background-color: var(--gold);
-      color: #0b0b0b;
+      background-color: var(--gold) !important;
+      color: #0b0b0b !important;
       font-weight:700;
       border-radius:8px;
+      padding: 8px 12px;
+      border: none;
     }
     .chancard{
-      border-radius:12px;
-      padding:14px;
-      background:linear-gradient(180deg,var(--soft),#0f0f0f);
-      border:1px solid rgba(212,175,55,0.12);
-      box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+      border-radius:14px;
+      padding:18px;
+      background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.18));
+      border:1px solid rgba(212,175,55,0.08);
+      box-shadow: 0 8px 30px rgba(0,0,0,0.6);
+      margin-bottom: 16px;
     }
     .field-label{color:var(--muted);font-weight:600}
     .small-muted{color: #bfb1a1; font-size:12px}
+    .logo-credit{color:#bfb1a1;font-size:12px;margin-top:4px}
+    .stTextInput>div>input {background:transparent;color: #e9e2d0}
+    .stTextInput>div>label {color:var(--muted)}
+    .dataframe {background: var(--card) !important}
     </style>
     """,
     unsafe_allow_html=True,
 )
 
 # ---------------------------
-# Constants
+# Constants & Auth (updated)
 # ---------------------------
 COLORS = [
-    {"red": 0.07, "green": 0.06, "blue": 0.06},   # dark (used rarely)
-    {"red": 0.95, "green": 0.85, "blue": 0.65},   # gold-ish (will look golden in sheet)
+    {"red": 0.07, "green": 0.06, "blue": 0.06},   # dark
+    {"red": 0.95, "green": 0.85, "blue": 0.65},   # gold-ish
     {"red": 0.85, "green": 0.80, "blue": 0.70},
 ]
 
 AUTHORIZED_USERS = {
-    "CFADMIN": "A1234",
-    "CFCOMERCIALE": "B5531",
-    "CFSTOCK": "C9910",
-    "CFDIRECTION": "D2201"
+    "DIRECTION": "CFF10",
+    "COMERCIALE": "CFF11",
+    "STOCK": "CFF12",
+    "AUTRES": "CFF13"
 }
 
 # ---------------------------
-# Session: scan index (persist in session; optional migration from secrets)
+# Session: scan index
 # ---------------------------
 if "scan_index" not in st.session_state:
     try:
@@ -107,23 +121,25 @@ def do_logout():
     for k in ["auth", "user_nom", "user_matricule"]:
         if k in st.session_state:
             del st.session_state[k]
-    # Rerun to effect logout
-    st.rerun()
+    st.experimental_rerun()
 
 def login_block():
+    st.markdown("<div class='chancard'>", unsafe_allow_html=True)
     st.markdown("### 🔐 Connexion")
-    nom = st.text_input("Nom", placeholder="Ex: CFCOMERCIALE")
-    mat = st.text_input("Matricule", type="password", placeholder="Ton code")
+    col1, col2 = st.columns([2, 1])
+    nom = col1.text_input("Nom (ex: DIRECTION, COMERCIALE, STOCK, AUTRES)", placeholder="Ex: COMERCIALE")
+    mat = col2.text_input("Matricule", type="password", placeholder="Ton code")
     if st.button("Se connecter"):
         if nom and nom.upper() in AUTHORIZED_USERS and AUTHORIZED_USERS[nom.upper()] == mat:
             st.session_state.auth = True
             st.session_state.user_nom = nom.upper()
             st.session_state.user_matricule = mat
-            st.success("Connexion OK — Bienvenue " + st.session_state.user_nom)
-            time.sleep(0.3)
-            st.rerun()
+            st.success(f"Connexion OK — Bienvenue {st.session_state.user_nom}")
+            time.sleep(0.25)
+            st.experimental_rerun()
         else:
             st.error("Accès refusé — Nom ou matricule invalide")
+    st.markdown("</div>", unsafe_allow_html=True)
 
 if "auth" not in st.session_state:
     st.session_state.auth = False
@@ -133,16 +149,14 @@ if not st.session_state.auth:
     st.stop()
 
 # ---------------------------
-# Image preprocessing (PIL) - Cloud friendly
+# PIL-based image preprocessing
 # ---------------------------
 def preprocess_image(image_bytes: bytes) -> bytes:
     img = Image.open(BytesIO(image_bytes)).convert("RGB")
-    # Resize if huge
     max_w = 2600
     if img.width > max_w:
         ratio = max_w / img.width
         img = img.resize((max_w, int(img.height * ratio)), Image.LANCZOS)
-    # Auto-contrast, denoise, sharpen
     img = ImageOps.autocontrast(img)
     img = img.filter(ImageFilter.MedianFilter(size=3))
     img = img.filter(ImageFilter.UnsharpMask(radius=1, percent=140, threshold=2))
@@ -151,20 +165,15 @@ def preprocess_image(image_bytes: bytes) -> bytes:
     return out.getvalue()
 
 # ---------------------------
-# Google Vision client from st.secrets
+# Google Vision client (from st.secrets)
 # ---------------------------
 def get_vision_client():
-    """
-    Look for keys: gcp_vision or google_service_account
-    The value must be the service account JSON fields (as a TOML table in secrets)
-    """
     if "gcp_vision" in st.secrets:
         info = dict(st.secrets["gcp_vision"])
     elif "google_service_account" in st.secrets:
         info = dict(st.secrets["google_service_account"])
     else:
         raise RuntimeError("Credentials Google Vision introuvables dans st.secrets (ajoute [gcp_vision])")
-
     creds = SA_Credentials.from_service_account_info(info)
     client = vision.ImageAnnotatorClient(credentials=creds)
     return client
@@ -173,7 +182,7 @@ def google_vision_ocr(img_bytes: bytes) -> str:
     client = get_vision_client()
     image = vision.Image(content=img_bytes)
     response = client.text_detection(image=image)
-    if response.error and response.error.message:
+    if getattr(response, "error", None) and getattr(response.error, "message", None):
         raise Exception(f"Google Vision Error: {response.error.message}")
     raw = ""
     if response.text_annotations:
@@ -181,7 +190,7 @@ def google_vision_ocr(img_bytes: bytes) -> str:
     return raw or ""
 
 # ---------------------------
-# Text cleaning & extraction helpers
+# Text cleaning & extraction helpers (same logic)
 # ---------------------------
 def clean_text(text: str) -> str:
     text = text.replace("\r", "\n")
@@ -340,7 +349,7 @@ def color_rows(spreadsheet_id, sheet_id, start, end, color):
     service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
 
 # ---------------------------
-# UI - Upload (no camera)
+# UI - Upload
 # ---------------------------
 st.markdown("<div class='chancard'>", unsafe_allow_html=True)
 uploaded = st.file_uploader("Importer une facture (jpg/png)", type=["jpg","jpeg","png"])
@@ -353,7 +362,6 @@ if uploaded:
     except Exception as e:
         st.error("Image non lisible : " + str(e))
 
-# prepare edited df storage
 if "edited_articles_df" not in st.session_state:
     st.session_state["edited_articles_df"] = None
 
@@ -374,7 +382,6 @@ if img:
     p.progress(100)
     p.empty()
 
-    # Editable detection fields
     st.subheader("Informations détectées (modifiable)")
     col1, col2 = st.columns(2)
     facture_val = col1.text_input("🔢 Numéro de facture", value=res.get("facture", ""))
@@ -411,10 +418,9 @@ if img:
         new_row = pd.DataFrame([{"article": "", "bouteilles": 0}])
         edited_df = pd.concat([edited_df, new_row], ignore_index=True)
         st.session_state["edited_articles_df"] = edited_df
-        st.rerun()
+        st.experimental_rerun()
 
     st.session_state["edited_articles_df"] = edited_df.copy()
-
     st.subheader("Texte brut (résultat OCR)")
     st.code(res["raw"])
 
@@ -431,55 +437,54 @@ except Exception:
     spreadsheet_id = None
 
 # ---------------------------
-# ENVOI -> Google Sheets (bouton rétabli)
+# ENVOI -> Google Sheets
 # ---------------------------
 if img and st.session_state.get("edited_articles_df") is not None:
-    # show the send button only if ws is available; otherwise show info + helper
     if ws is None:
         st.info("Google Sheets non configuré ou credentials manquants — vérifie .streamlit/secrets.toml")
-    if ws and st.button("📤 Envoyer vers Google Sheets"):
-        try:
-            edited = st.session_state["edited_articles_df"].copy()
-            edited = edited[~((edited["article"].astype(str).str.strip() == "") & (edited["bouteilles"] == 0))]
-            edited["bouteilles"] = pd.to_numeric(edited["bouteilles"].fillna(0), errors="coerce").fillna(0).astype(int)
+    else:
+        if st.button("📤 Envoyer vers Google Sheets"):
+            try:
+                edited = st.session_state["edited_articles_df"].copy()
+                edited = edited[~((edited["article"].astype(str).str.strip() == "") & (edited["bouteilles"] == 0))]
+                edited["bouteilles"] = pd.to_numeric(edited["bouteilles"].fillna(0), errors="coerce").fillna(0).astype(int)
 
-            start_row = len(ws.get_all_values()) + 1
-            today_str = datetime.now().strftime("%d/%m/%Y")
+                start_row = len(ws.get_all_values()) + 1
+                today_str = datetime.now().strftime("%d/%m/%Y")
 
-            for _, row in edited.iterrows():
-                ws.append_row([
-                    mois_val or "",
-                    doit_val or "",
-                    today_str,
-                    bon_commande_val or "",
-                    adresse_val or "",
-                    row.get("article", ""),
-                    int(row.get("bouteilles", 0)),
-                    st.session_state.user_nom
-                ])
+                for _, row in edited.iterrows():
+                    ws.append_row([
+                        mois_val or "",
+                        doit_val or "",
+                        today_str,
+                        bon_commande_val or "",
+                        adresse_val or "",
+                        row.get("article", ""),
+                        int(row.get("bouteilles", 0)),
+                        st.session_state.user_nom
+                    ])
 
-            end_row = len(ws.get_all_values())
+                end_row = len(ws.get_all_values())
 
-            color = COLORS[st.session_state.get("scan_index", 0) % len(COLORS)]
-            if spreadsheet_id and sheet_id is not None:
-                # start_row - 1 because Sheets API uses 0-index
-                color_rows(spreadsheet_id, sheet_id, start_row-1, end_row, color)
+                color = COLORS[st.session_state.get("scan_index", 0) % len(COLORS)]
+                if spreadsheet_id and sheet_id is not None:
+                    color_rows(spreadsheet_id, sheet_id, start_row-1, end_row, color)
 
-            st.session_state["scan_index"] = st.session_state.get("scan_index", 0) + 1
+                st.session_state["scan_index"] = st.session_state.get("scan_index", 0) + 1
 
-            st.success("✅ Données insérées avec succès !")
-            st.info(f"📌 Lignes insérées dans le sheet : {start_row} → {end_row}")
-            st.json({
-                "mois": mois_val,
-                "doit": doit_val,
-                "date_envoye": today_str,
-                "bon_de_commande": bon_commande_val,
-                "adresse": adresse_val,
-                "nb_lignes_envoyees": len(edited),
-                "editeur": st.session_state.user_nom
-            })
-        except Exception as e:
-            st.error(f"❌ Erreur envoi Sheets: {e}")
+                st.success("✅ Données insérées avec succès !")
+                st.info(f"📌 Lignes insérées dans le sheet : {start_row} → {end_row}")
+                st.json({
+                    "mois": mois_val,
+                    "doit": doit_val,
+                    "date_envoye": today_str,
+                    "bon_de_commande": bon_commande_val,
+                    "adresse": adresse_val,
+                    "nb_lignes_envoyees": len(edited),
+                    "editeur": st.session_state.user_nom
+                })
+            except Exception as e:
+                st.error(f"❌ Erreur envoi Sheets: {e}")
 
 # ---------------------------
 # Aperçu du Google Sheet
@@ -502,18 +507,6 @@ if ws:
 # ---------------------------
 st.markdown("---")
 st.button("🚪 Déconnexion", on_click=do_logout)
-
-# ---------------------------
-# requirements.txt (minimale)
-# ---------------------------
-# streamlit
-# pillow
-# numpy
-# google-cloud-vision
-# gspread
-# google-api-python-client
-# google-auth
-# pandas
 
 # ---------------------------
 # .streamlit/secrets.toml TEMPLATE (exemple)
