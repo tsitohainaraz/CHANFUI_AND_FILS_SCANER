@@ -136,7 +136,7 @@ st.markdown(
 
     /* subtle loader animation for headings */
     @keyframes shimmer {{
-      0% {{ background-position: -200% 0; }}
+      0% { background-position: -200% 0; }
       100% {{ background-position: 200% 0; }}
     }}
     .shimmer {{
@@ -594,3 +594,4 @@ if st.button("🚪 Déconnexion"):
         pass
 
 # End of file
+
