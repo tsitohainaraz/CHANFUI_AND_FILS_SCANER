@@ -1,7 +1,6 @@
-# app.py
-# Chan Foui et Fils — OCR Facture PRO
-# Option C — UI premium + animations (fond clair, accents or & bleu pétrole)
-# Requirements: streamlit, pillow, numpy, google-cloud-vision, gspread, google-api-python-client, google-auth, pandas
+# app_updated.py
+# Chan Foui et Fils — OCR Facture PRO (UI premium, centered header)
+# Updated by assistant: center header, improve typography, keep backend unchanged
 
 import streamlit as st
 import numpy as np
@@ -48,9 +47,8 @@ AUTHORIZED_USERS = {
 # ---------------------------
 # Colors & sheet row colors (keep for Sheets color_rows)
 # ---------------------------
-# main palette: bleu pétrole (logo), or (gold), ivoire clair
 PALETTE = {
-    "petrol":"#0F3A45",   # logo blue/teal
+    "petrol":"#0F3A45",
     "gold":"#D4AF37",
     "ivory":"#FAF5EA",
     "muted":"#7a8a8f",
@@ -59,13 +57,13 @@ PALETTE = {
 }
 
 COLORS = [
-    {"red": 0.07, "green": 0.06, "blue": 0.06},   # dark tint
-    {"red": 0.83, "green": 0.72, "blue": 0.45},   # gold-ish
+    {"red": 0.07, "green": 0.06, "blue": 0.06},
+    {"red": 0.83, "green": 0.72, "blue": 0.45},
     {"red": 0.88, "green": 0.84, "blue": 0.78},
 ]
 
 # ---------------------------
-# Styles (premium, animations)
+# Styles (premium, animations, centered header)
 # ---------------------------
 st.markdown(
     f"""
@@ -84,28 +82,34 @@ st.markdown(
         font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
     }}
 
-    /* header */
+    /* header - centered */
+    .topbar-wrapper {{ display:flex; justify-content:center; }}
     .topbar {{
         display:flex;
         align-items:center;
         gap:18px;
-        padding:12px 8px;
+        padding:12px 18px;
         border-radius:12px;
         background: linear-gradient(90deg, rgba(15,58,69,0.03), rgba(212,175,55,0.02));
         box-shadow: 0 6px 22px rgba(15,58,69,0.06);
-        margin-bottom:14px;
+        margin-bottom:16px;
+        max-width:920px;
+        width:100%;
     }}
+    .brand-left {{ display:flex; align-items:center; gap:14px; justify-content:center; width:100%; }}
     .brand-title {{
         font-family: Georgia, serif;
         font-size:28px;
         color: var(--petrol);
         margin:0;
         font-weight:700;
+        text-align:center;
     }}
     .brand-sub {{
         color: var(--muted);
         margin:0;
         font-size:13px;
+        text-align:center;
     }}
 
     /* card */
@@ -116,6 +120,8 @@ st.markdown(
         box-shadow: 0 8px 30px rgba(15,58,69,0.04);
         border: 1px solid rgba(15,58,69,0.04);
         transition: transform .18s ease, box-shadow .18s ease;
+        max-width:920px;
+        margin:auto;
     }}
     .card:hover {{ transform: translateY(-6px); box-shadow: 0 14px 40px rgba(15,58,69,0.06); }}
 
@@ -129,14 +135,12 @@ st.markdown(
         box-shadow: 0 6px 18px rgba(212,175,55,0.18);
     }}
 
-    /* small helpers */
-    .muted-small {{ color: var(--muted); font-size:13px; }}
-    .logo-round {{ border-radius:10px; }}
+    .muted-small {{ color: var(--muted); font-size:13px; text-align:center; }}
+    .logo-round {{ border-radius:10px; display:block; margin:auto; }}
     .highlight {{ color: var(--petrol); font-weight:700; }}
 
-    /* subtle loader animation for headings */
     @keyframes shimmer {{
-      0% { background-position: -200% 0; }
+      0% {{ background-position: -200% 0; }}
       100% {{ background-position: 200% 0; }}
     }}
     .shimmer {{
@@ -147,9 +151,10 @@ st.markdown(
       padding:6px;
     }}
 
-    /* responsive tweaks */
+    /* small screens */
     @media (max-width: 640px) {{
         .brand-title {{ font-size:20px; }}
+        .topbar {{ padding:10px; gap:10px; }}
     }}
     </style>
     """,
@@ -160,7 +165,6 @@ st.markdown(
 # Helpers - vision / preprocess / extraction (kept from working backend)
 # ---------------------------
 def preprocess_image(image_bytes: bytes) -> bytes:
-    # PIL-based, cloud-friendly preprocessing (auto-contrast, denoise, sharpen)
     img = Image.open(BytesIO(image_bytes)).convert("RGB")
     max_w = 2600
     if img.width > max_w:
@@ -174,7 +178,6 @@ def preprocess_image(image_bytes: bytes) -> bytes:
     return out.getvalue()
 
 def get_vision_client():
-    # read service account dict from st.secrets["gcp_vision"] or alternative
     if "gcp_vision" in st.secrets:
         sa_info = dict(st.secrets["gcp_vision"])
     elif "google_service_account" in st.secrets:
@@ -204,7 +207,7 @@ def clean_text(text: str) -> str:
     text = re.sub(r"\s+\n", "\n", text)
     return text.strip()
 
-# extraction helpers (same as before)
+# extraction helpers (unchanged)
 def extract_invoice_number(text):
     p = r"FACTURE\s+EN\s+COMPTE.*?N[°o]?\s*([0-9]{3,})"
     m = re.search(p, text, flags=re.I)
@@ -360,22 +363,31 @@ if "scan_index" not in st.session_state:
         st.session_state.scan_index = 0
 
 # ---------------------------
-# Header rendering (logo + title)
+# Header rendering (logo + centered title)
 # ---------------------------
 def render_header():
-    # left: logo if exists, right: title texts
+    st.markdown("<div class='topbar-wrapper'>", unsafe_allow_html=True)
     if os.path.exists(LOGO_FILENAME):
         try:
             logo = Image.open(LOGO_FILENAME).convert("RGBA")
-            cols = st.columns([0.8, 4])
+            # show logo + title centered
+            logo_html = f"<div style='text-align:center;width:120px'><img src='data:image/png;base64,{st.image(logo, use_column_width=False)}' class='logo-round' style='width:84px;height:auto;display:block;margin:auto'/></div>"
+            # Note: st.image() already renders the image; we'll render layout using columns instead
+            cols = st.columns([1,6,1])
             with cols[0]:
-                st.image(logo, width=84, caption=None, output_format="PNG")
+                st.write("")
             with cols[1]:
-                st.markdown(f"<div class='topbar'><div><h2 class='brand-title'>{BRAND_TITLE}</h2><div class='brand-sub'>{BRAND_SUB}</div></div></div>", unsafe_allow_html=True)
+                # show centered stack: logo above title
+                if os.path.exists(LOGO_FILENAME):
+                    st.image(logo, width=96)
+                st.markdown(f"<div class='topbar'><div class='brand-left'><div><h2 class='brand-title'>{BRAND_TITLE}</h2><div class='brand-sub'>{BRAND_SUB}</div></div></div></div>", unsafe_allow_html=True)
+            with cols[2]:
+                st.write("")
         except Exception:
-            st.markdown(f"<div class='topbar'><div><h2 class='brand-title'>{BRAND_TITLE}</h2><div class='brand-sub'>{BRAND_SUB}</div></div></div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='topbar'><div class='brand-left'><div><h2 class='brand-title'>{BRAND_TITLE}</h2><div class='brand-sub'>{BRAND_SUB}</div></div></div></div>", unsafe_allow_html=True)
     else:
-        st.markdown(f"<div class='topbar'><div><h2 class='brand-title'>{BRAND_TITLE}</h2><div class='brand-sub'>{BRAND_SUB}</div></div></div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='topbar'><div class='brand-left'><div><h2 class='brand-title'>{BRAND_TITLE}</h2><div class='brand-sub'>{BRAND_SUB}</div></div></div></div>", unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 render_header()
 
@@ -384,7 +396,7 @@ render_header()
 # ---------------------------
 def login_block():
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("### 🔐 Connexion")
+    st.markdown("<h3 style='text-align:center'>🔐 Connexion</h3>", unsafe_allow_html=True)
     nom = st.text_input("Nom (ex: DIRECTION)", key="login_nom")
     mat = st.text_input("Matricule", type="password", key="login_mat")
     if st.button("Se connecter"):
@@ -392,12 +404,10 @@ def login_block():
             st.session_state.auth = True
             st.session_state.user_nom = nom.upper()
             st.session_state.user_matricule = mat
-            st.success("Connexion OK — Bienvenue " + st.session_state.user_nom)
-            # safe rerun: try experimental_rerun else fallback to st.experimental_rerun attribute
+            st.success(f"Connexion OK — Bienvenue {st.session_state.user_nom}")
             try:
                 st.experimental_rerun()
             except Exception:
-                # fallback: do nothing (UI will update next run)
                 pass
         else:
             st.error("Accès refusé — Nom ou matricule invalide")
@@ -414,9 +424,9 @@ if not st.session_state.auth:
 # Main UI - Upload and OCR
 # ---------------------------
 st.markdown("<div class='card'>", unsafe_allow_html=True)
-st.markdown("### 📥 Importer une facture")
+st.markdown("<h3 style='text-align:center'>📥 Importer une facture</h3>", unsafe_allow_html=True)
 st.markdown("<div class='muted-small'>Formats acceptés: jpg, jpeg, png — qualité recommandée: photo nette</div>", unsafe_allow_html=True)
-uploaded = st.file_uploader("", type=["jpg","jpeg","png"])
+uploaded = st.file_uploader("", type=["jpg","jpeg","png"], key="uploader")
 st.markdown("</div>", unsafe_allow_html=True)
 
 img = None
@@ -432,7 +442,7 @@ if "edited_articles_df" not in st.session_state:
 
 if img:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.image(img, caption="Aperçu", use_column_width=True)
+    st.image(img, caption="Aperçu", use_container_width=True)
     buf = BytesIO()
     img.save(buf, format="JPEG")
     img_bytes = buf.getvalue()
@@ -543,13 +553,12 @@ if img and st.session_state.get("edited_articles_df") is not None:
 
             color = COLORS[st.session_state.get("scan_index", 0) % len(COLORS)]
             if spreadsheet_id and sheet_id is not None:
-                # start_row - 1 because API uses 0-index
                 color_rows(spreadsheet_id, sheet_id, start_row-1, end_row, color)
 
             st.session_state["scan_index"] = st.session_state.get("scan_index", 0) + 1
 
-            st.success("✅ Données insérées avec succès !")
-            st.info(f"📌 Lignes insérées dans le sheet : {start_row} → {end_row}")
+            st.success("✅ Donn\u00e9es ins\u00e9r\u00e9es avec succ\u00e8s !")
+            st.info(f"📌 Lignes ins\u00e9r\u00e9es dans le sheet : {start_row} → {end_row}")
             st.json({
                 "mois": mois_val,
                 "doit": doit_val,
@@ -587,11 +596,9 @@ if st.button("🚪 Déconnexion"):
     for k in ["auth", "user_nom", "user_matricule"]:
         if k in st.session_state:
             del st.session_state[k]
-    # safe rerun
     try:
         st.experimental_rerun()
     except Exception:
         pass
 
 # End of file
-
