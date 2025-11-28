@@ -1,13 +1,13 @@
-# app_updated.py
-# Chan Foui et Fils — OCR Facture PRO (UI premium, centered header)
-# Updated by assistant: center header, improve typography, keep backend unchanged
+# app.py
+# Chan Foui et Fils — OCR Facture PRO
+# Option C — UI premium (fond clair, accents or & bleu pétrole)
+# Requirements: streamlit, pillow, numpy, google-cloud-vision, gspread, google-api-python-client, google-auth, pandas
 
 import streamlit as st
 import numpy as np
 import re
 import time
 import os
-import json
 from datetime import datetime
 from io import BytesIO
 from PIL import Image, ImageFilter, ImageOps
@@ -45,25 +45,24 @@ AUTHORIZED_USERS = {
 }
 
 # ---------------------------
-# Colors & sheet row colors (keep for Sheets color_rows)
+# Colors & sheet row colors (2 colors only)
 # ---------------------------
 PALETTE = {
-    "petrol":"#0F3A45",
-    "gold":"#D4AF37",
-    "ivory":"#FAF5EA",
-    "muted":"#7a8a8f",
-    "card":"#ffffff",
-    "soft":"#f6f2ec"
+    "petrol": "#0F3A45",   # logo blue/teal
+    "gold": "#D4AF37",
+    "ivory": "#FAF5EA",
+    "muted": "#7a8a8f",
+    "card": "#ffffff",
+    "soft": "#f6f2ec"
 }
 
-COLORS = [
-    {"red": 0.07, "green": 0.06, "blue": 0.06},
-    {"red": 0.83, "green": 0.72, "blue": 0.45},
-    {"red": 0.88, "green": 0.84, "blue": 0.78},
-]
+# For Sheets API backgroundColor we need floats [0..1]
+# Petrol #0F3A45 -> (15,58,69) /255
+SHEET_COLOR_THEME = {"red": 15/255.0, "green": 58/255.0, "blue": 69/255.0}
+SHEET_COLOR_DEFAULT = {"red": 1.0, "green": 1.0, "blue": 1.0}
 
 # ---------------------------
-# Styles (premium, animations, centered header)
+# Styles (premium)
 # ---------------------------
 st.markdown(
     f"""
@@ -82,24 +81,25 @@ st.markdown(
         font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
     }}
 
-    /* header - centered */
-    .topbar-wrapper {{ display:flex; justify-content:center; }}
+    /* header centered */
+    .topbar-wrapper {{
+        display:flex;
+        justify-content:center;
+        align-items:center;
+        margin-bottom:18px;
+    }}
     .topbar {{
         display:flex;
         align-items:center;
         gap:18px;
-        padding:12px 18px;
-        border-radius:12px;
-        background: linear-gradient(90deg, rgba(15,58,69,0.03), rgba(212,175,55,0.02));
-        box-shadow: 0 6px 22px rgba(15,58,69,0.06);
-        margin-bottom:16px;
-        max-width:920px;
-        width:100%;
+        padding:12px 22px;
+        border-radius:14px;
+        background: linear-gradient(90deg, rgba(15,58,69,0.03), rgba(212,175,55,0.03));
+        box-shadow: 0 8px 30px rgba(15,58,69,0.04);
     }}
-    .brand-left {{ display:flex; align-items:center; gap:14px; justify-content:center; width:100%; }}
     .brand-title {{
         font-family: Georgia, serif;
-        font-size:28px;
+        font-size:30px;
         color: var(--petrol);
         margin:0;
         font-weight:700;
@@ -112,18 +112,24 @@ st.markdown(
         text-align:center;
     }}
 
+    /* centered logo */
+    .logo-box {{
+        display:flex;
+        align-items:center;
+        justify-content:center;
+    }}
+
     /* card */
     .card {{
         border-radius:14px;
         background: var(--card);
-        padding:16px;
-        box-shadow: 0 8px 30px rgba(15,58,69,0.04);
-        border: 1px solid rgba(15,58,69,0.04);
-        transition: transform .18s ease, box-shadow .18s ease;
-        max-width:920px;
-        margin:auto;
+        padding:18px;
+        box-shadow: 0 10px 30px rgba(15,58,69,0.04);
+        border: 1px solid rgba(15,58,69,0.03);
+        transition: transform .12s ease, box-shadow .12s ease;
+        margin-bottom:14px;
     }}
-    .card:hover {{ transform: translateY(-6px); box-shadow: 0 14px 40px rgba(15,58,69,0.06); }}
+    .card:hover {{ transform: translateY(-4px); box-shadow: 0 18px 50px rgba(15,58,69,0.06); }}
 
     /* buttons */
     .stButton>button {{
@@ -132,29 +138,25 @@ st.markdown(
         font-weight:700;
         border-radius:10px;
         padding:8px 12px;
-        box-shadow: 0 6px 18px rgba(212,175,55,0.18);
+        box-shadow: 0 6px 18px rgba(212,175,55,0.12);
     }}
 
-    .muted-small {{ color: var(--muted); font-size:13px; text-align:center; }}
-    .logo-round {{ border-radius:10px; display:block; margin:auto; }}
+    /* inputs styling (visual only) */
+    .stTextInput>div>input, .stTextArea>div>textarea {{
+        border-radius:8px;
+        padding:8px 10px;
+        border:1px solid rgba(15,58,69,0.06);
+    }}
+
+    /* small helpers */
+    .muted-small {{ color: var(--muted); font-size:13px; }}
+    .logo-round img {{ border-radius:8px; }}
     .highlight {{ color: var(--petrol); font-weight:700; }}
 
-    @keyframes shimmer {{
-      0% {{ background-position: -200% 0; }}
-      100% {{ background-position: 200% 0; }}
-    }}
-    .shimmer {{
-      background: linear-gradient(90deg, rgba(212,175,55,0.06), rgba(15,58,69,0.03), rgba(212,175,55,0.06));
-      background-size: 200% 100%;
-      animation: shimmer 4s linear infinite;
-      border-radius: 8px;
-      padding:6px;
-    }}
-
-    /* small screens */
+    /* responsive tweaks */
     @media (max-width: 640px) {{
         .brand-title {{ font-size:20px; }}
-        .topbar {{ padding:10px; gap:10px; }}
+        .topbar {{ padding:10px 12px; gap:10px; }}
     }}
     </style>
     """,
@@ -334,24 +336,34 @@ def get_sheets_service():
     service = build("sheets", "v4", credentials=creds)
     return service
 
-def color_rows(spreadsheet_id, sheet_id, start, end, color):
+def color_rows(spreadsheet_id, sheet_id, start, end, scan_index):
+    """
+    Apply two-color alternating background: default (white) and theme (petrol).
+    `start` and `end` are 0-index row indexes (end exclusive).
+    We compute each row color based on its absolute row index so repeated runs keep alternation.
+    """
     service = get_sheets_service()
-    body = {
-        "requests":[
-            {
-                "repeatCell":{
-                    "range":{
-                        "sheetId":sheet_id,
-                        "startRowIndex":start,
-                        "endRowIndex":end
-                    },
-                    "cell":{"userEnteredFormat":{"backgroundColor":color}},
-                    "fields":"userEnteredFormat.backgroundColor"
-                }
+    requests = []
+    for r in range(start, end):
+        # determine color: alternate based on row number (even -> default white, odd -> theme)
+        if (r % 2) == 0:
+            color = SHEET_COLOR_DEFAULT
+        else:
+            color = SHEET_COLOR_THEME
+        requests.append({
+            "repeatCell": {
+                "range": {
+                    "sheetId": sheet_id,
+                    "startRowIndex": r,
+                    "endRowIndex": r+1
+                },
+                "cell": {"userEnteredFormat": {"backgroundColor": color}},
+                "fields": "userEnteredFormat.backgroundColor"
             }
-        ]
-    }
-    service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
+        })
+    if requests:
+        body = {"requests": requests}
+        service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
 
 # ---------------------------
 # Session init
@@ -363,31 +375,46 @@ if "scan_index" not in st.session_state:
         st.session_state.scan_index = 0
 
 # ---------------------------
-# Header rendering (logo + centered title)
+# Header rendering (logo + title) centered
 # ---------------------------
 def render_header():
     st.markdown("<div class='topbar-wrapper'>", unsafe_allow_html=True)
+    # show logo centered with title
     if os.path.exists(LOGO_FILENAME):
         try:
             logo = Image.open(LOGO_FILENAME).convert("RGBA")
-            # show logo + title centered
-            logo_html = f"<div style='text-align:center;width:120px'><img src='data:image/png;base64,{st.image(logo, use_column_width=False)}' class='logo-round' style='width:84px;height:auto;display:block;margin:auto'/></div>"
-            # Note: st.image() already renders the image; we'll render layout using columns instead
-            cols = st.columns([1,6,1])
-            with cols[0]:
-                st.write("")
-            with cols[1]:
-                # show centered stack: logo above title
-                if os.path.exists(LOGO_FILENAME):
-                    st.image(logo, width=96)
-                st.markdown(f"<div class='topbar'><div class='brand-left'><div><h2 class='brand-title'>{BRAND_TITLE}</h2><div class='brand-sub'>{BRAND_SUB}</div></div></div></div>", unsafe_allow_html=True)
-            with cols[2]:
-                st.write("")
+            # center container: logo + text
+            st.markdown(
+                "<div class='topbar'>"
+                f"<div class='logo-box'><img src='data:image/png;base64,{_img_to_base64(logo)}' width='84' style='border-radius:8px;'/></div>"
+                f"<div style='text-align:left;margin-left:10px;'>"
+                f"<h1 class='brand-title' style='margin:0'>{BRAND_TITLE}</h1>"
+                f"<div class='brand-sub'>{BRAND_SUB}</div>"
+                f"</div>"
+                "</div>",
+                unsafe_allow_html=True
+            )
+            st.markdown("</div>", unsafe_allow_html=True)
+            return
         except Exception:
-            st.markdown(f"<div class='topbar'><div class='brand-left'><div><h2 class='brand-title'>{BRAND_TITLE}</h2><div class='brand-sub'>{BRAND_SUB}</div></div></div></div>", unsafe_allow_html=True)
-    else:
-        st.markdown(f"<div class='topbar'><div class='brand-left'><div><h2 class='brand-title'>{BRAND_TITLE}</h2><div class='brand-sub'>{BRAND_SUB}</div></div></div></div>", unsafe_allow_html=True)
+            # fallthrough to simpler markup
+            pass
+    # fallback if no logo or error
+    st.markdown(
+        "<div class='topbar'>"
+        f"<div style='text-align:center;width:100%;'><h1 class='brand-title' style='margin:0'>{BRAND_TITLE}</h1><div class='brand-sub'>{BRAND_SUB}</div></div>"
+        "</div>",
+        unsafe_allow_html=True
+    )
     st.markdown("</div>", unsafe_allow_html=True)
+
+# helper to convert PIL image to base64 for inline embedding
+def _img_to_base64(img: Image.Image) -> str:
+    import base64
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    b = base64.b64encode(buf.getvalue()).decode("utf-8")
+    return b
 
 render_header()
 
@@ -396,7 +423,7 @@ render_header()
 # ---------------------------
 def login_block():
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("<h3 style='text-align:center'>🔐 Connexion</h3>", unsafe_allow_html=True)
+    st.markdown("### 🔐 Connexion")
     nom = st.text_input("Nom (ex: DIRECTION)", key="login_nom")
     mat = st.text_input("Matricule", type="password", key="login_mat")
     if st.button("Se connecter"):
@@ -404,7 +431,7 @@ def login_block():
             st.session_state.auth = True
             st.session_state.user_nom = nom.upper()
             st.session_state.user_matricule = mat
-            st.success(f"Connexion OK — Bienvenue {st.session_state.user_nom}")
+            st.success("Connexion OK — Bienvenue " + st.session_state.user_nom)
             try:
                 st.experimental_rerun()
             except Exception:
@@ -424,9 +451,9 @@ if not st.session_state.auth:
 # Main UI - Upload and OCR
 # ---------------------------
 st.markdown("<div class='card'>", unsafe_allow_html=True)
-st.markdown("<h3 style='text-align:center'>📥 Importer une facture</h3>", unsafe_allow_html=True)
+st.markdown("### 📥 Importer une facture")
 st.markdown("<div class='muted-small'>Formats acceptés: jpg, jpeg, png — qualité recommandée: photo nette</div>", unsafe_allow_html=True)
-uploaded = st.file_uploader("", type=["jpg","jpeg","png"], key="uploader")
+uploaded = st.file_uploader("", type=["jpg","jpeg","png"])
 st.markdown("</div>", unsafe_allow_html=True)
 
 img = None
@@ -442,7 +469,7 @@ if "edited_articles_df" not in st.session_state:
 
 if img:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.image(img, caption="Aperçu", use_container_width=True)
+    st.image(img, caption="Aperçu", use_column_width=True)
     buf = BytesIO()
     img.save(buf, format="JPEG")
     img_bytes = buf.getvalue()
@@ -521,7 +548,7 @@ except Exception:
     spreadsheet_id = None
 
 # ---------------------------
-# ENVOI -> Google Sheets
+# ENVOI -> Google Sheets (no preview button)
 # ---------------------------
 if img and st.session_state.get("edited_articles_df") is not None:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
@@ -534,7 +561,9 @@ if img and st.session_state.get("edited_articles_df") is not None:
             edited = edited[~((edited["article"].astype(str).str.strip() == "") & (edited["bouteilles"] == 0))]
             edited["bouteilles"] = pd.to_numeric(edited["bouteilles"].fillna(0), errors="coerce").fillna(0).astype(int)
 
-            start_row = len(ws.get_all_values()) + 1
+            # compute start row (1-based)
+            existing = ws.get_all_values()
+            start_row = len(existing) + 1
             today_str = datetime.now().strftime("%d/%m/%Y")
 
             for _, row in edited.iterrows():
@@ -551,14 +580,15 @@ if img and st.session_state.get("edited_articles_df") is not None:
 
             end_row = len(ws.get_all_values())
 
-            color = COLORS[st.session_state.get("scan_index", 0) % len(COLORS)]
+            # color rows with two-color alternation using absolute row index (0-based)
             if spreadsheet_id and sheet_id is not None:
-                color_rows(spreadsheet_id, sheet_id, start_row-1, end_row, color)
+                # convert start_row (1-based) to 0-based start index
+                color_rows(spreadsheet_id, sheet_id, start_row-1, end_row, st.session_state.get("scan_index", 0))
 
             st.session_state["scan_index"] = st.session_state.get("scan_index", 0) + 1
 
-            st.success("✅ Donn\u00e9es ins\u00e9r\u00e9es avec succ\u00e8s !")
-            st.info(f"📌 Lignes ins\u00e9r\u00e9es dans le sheet : {start_row} → {end_row}")
+            st.success("✅ Données insérées avec succès !")
+            st.info(f"📌 Lignes insérées dans le sheet : {start_row} → {end_row}")
             st.json({
                 "mois": mois_val,
                 "doit": doit_val,
@@ -571,22 +601,6 @@ if img and st.session_state.get("edited_articles_df") is not None:
         except Exception as e:
             st.error(f"❌ Erreur envoi Sheets: {e}")
     st.markdown("</div>", unsafe_allow_html=True)
-
-# ---------------------------
-# Aperçu du Google Sheet
-# ---------------------------
-if ws:
-    if st.button("👀 Aperçu du Google Sheet"):
-        try:
-            records = ws.get_all_records()
-            df_sheet = pd.DataFrame(records)
-            if df_sheet.shape[0] > 200:
-                st.warning("⚠ Le sheet contient plus de 200 lignes — affichage des 200 premières lignes.")
-                st.dataframe(df_sheet.head(200), use_container_width=True)
-            else:
-                st.dataframe(df_sheet, use_container_width=True)
-        except Exception as e:
-            st.error(f"Erreur lors du chargement du sheet : {e}")
 
 # ---------------------------
 # Footer + logout
