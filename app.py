@@ -1,10 +1,9 @@
 # app.py
 # Chan Foui et Fils — OCR Facture PRO
-# Option C — UI premium (fond clair, accents or & bleu pétrole)
+# Option C — UI premium + animations (fond clair, accents or & bleu pétrole)
 # Requirements: streamlit, pillow, numpy, google-cloud-vision, gspread, google-api-python-client, google-auth, pandas
 
 import streamlit as st
-import numpy as np
 import re
 import time
 import os
@@ -24,19 +23,16 @@ st.set_page_config(
     page_title="Chan Foui et Fils — OCR PRO",
     layout="centered",
     page_icon="🍷",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="collapsed",
 )
 
 # ---------------------------
-# Logo + topbar variables
+# Vars / Auth
 # ---------------------------
-LOGO_FILENAME = "CF_LOGOS.png"  # place this file next to app.py
+LOGO_FILENAME = "CF_LOGOS.png"
 BRAND_TITLE = "Chan Foui et Fils"
 BRAND_SUB = "Google Vision — Edition Premium"
 
-# ---------------------------
-# AUTH (updated)
-# ---------------------------
 AUTHORIZED_USERS = {
     "DIRECTION": "CFF10",
     "COMERCIALE": "CFF11",
@@ -44,11 +40,9 @@ AUTHORIZED_USERS = {
     "AUTRES": "CFF13"
 }
 
-# ---------------------------
-# Colors & sheet row colors (2 colors only)
-# ---------------------------
+# Colors palette
 PALETTE = {
-    "petrol": "#0F3A45",   # logo blue/teal
+    "petrol": "#0F3A45",   # for UI / sheet alternate color
     "gold": "#D4AF37",
     "ivory": "#FAF5EA",
     "muted": "#7a8a8f",
@@ -56,115 +50,44 @@ PALETTE = {
     "soft": "#f6f2ec"
 }
 
-# For Sheets API backgroundColor we need floats [0..1]
-# Petrol #0F3A45 -> (15,58,69) /255
-SHEET_COLOR_THEME = {"red": 15/255.0, "green": 58/255.0, "blue": 69/255.0}
-SHEET_COLOR_DEFAULT = {"red": 1.0, "green": 1.0, "blue": 1.0}
+# Sheets alternating colors (Option 1): White <-> Petrol
+SHEET_COLORS = [
+    {"red": 1.0, "green": 1.0, "blue": 1.0},  # white
+    {"red": 15/255, "green": 58/255, "blue": 69/255}  # petrol from hex #0F3A45
+]
 
 # ---------------------------
-# Styles (premium)
+# Lightweight styling (centered header, premium)
 # ---------------------------
 st.markdown(
     f"""
     <style>
-    :root{{
-        --petrol: {PALETTE['petrol']};
-        --gold: {PALETTE['gold']};
-        --ivory: {PALETTE['ivory']};
-        --muted: {PALETTE['muted']};
-        --card: {PALETTE['card']};
-        --soft: {PALETTE['soft']};
-    }}
+    :root{{ --petrol: {PALETTE['petrol']}; --gold: {PALETTE['gold']}; --ivory: {PALETTE['ivory']}; --muted: {PALETTE['muted']}; --card: {PALETTE['card']}; --soft: {PALETTE['soft']}; }}
     html, body, [data-testid='stAppViewContainer'] {{
         background: linear-gradient(180deg, var(--ivory), #fffdf9);
         color: var(--petrol);
-        font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+        font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
     }}
-
-    /* header centered */
-    .topbar-wrapper {{
-        display:flex;
-        justify-content:center;
-        align-items:center;
-        margin-bottom:18px;
-    }}
+    .topbar-wrapper {{ display:flex; justify-content:center; margin-bottom:12px; }}
     .topbar {{
-        display:flex;
-        align-items:center;
-        gap:18px;
-        padding:12px 22px;
-        border-radius:14px;
-        background: linear-gradient(90deg, rgba(15,58,69,0.03), rgba(212,175,55,0.03));
-        box-shadow: 0 8px 30px rgba(15,58,69,0.04);
+        display:flex; align-items:center; gap:18px; padding:12px 20px; border-radius:14px;
+        background: linear-gradient(90deg, rgba(15,58,69,0.03), rgba(212,175,55,0.02));
+        box-shadow: 0 6px 22px rgba(15,58,69,0.05); max-width:980px; width:100%;
     }}
-    .brand-title {{
-        font-family: Georgia, serif;
-        font-size:30px;
-        color: var(--petrol);
-        margin:0;
-        font-weight:700;
-        text-align:center;
-    }}
-    .brand-sub {{
-        color: var(--muted);
-        margin:0;
-        font-size:13px;
-        text-align:center;
-    }}
-
-    /* centered logo */
-    .logo-box {{
-        display:flex;
-        align-items:center;
-        justify-content:center;
-    }}
-
-    /* card */
-    .card {{
-        border-radius:14px;
-        background: var(--card);
-        padding:18px;
-        box-shadow: 0 10px 30px rgba(15,58,69,0.04);
-        border: 1px solid rgba(15,58,69,0.03);
-        transition: transform .12s ease, box-shadow .12s ease;
-        margin-bottom:14px;
-    }}
-    .card:hover {{ transform: translateY(-4px); box-shadow: 0 18px 50px rgba(15,58,69,0.06); }}
-
-    /* buttons */
-    .stButton>button {{
-        background: linear-gradient(180deg, var(--gold), #b58f2d);
-        color: #081214;
-        font-weight:700;
-        border-radius:10px;
-        padding:8px 12px;
-        box-shadow: 0 6px 18px rgba(212,175,55,0.12);
-    }}
-
-    /* inputs styling (visual only) */
-    .stTextInput>div>input, .stTextArea>div>textarea {{
-        border-radius:8px;
-        padding:8px 10px;
-        border:1px solid rgba(15,58,69,0.06);
-    }}
-
-    /* small helpers */
-    .muted-small {{ color: var(--muted); font-size:13px; }}
-    .logo-round img {{ border-radius:8px; }}
-    .highlight {{ color: var(--petrol); font-weight:700; }}
-
-    /* responsive tweaks */
-    @media (max-width: 640px) {{
-        .brand-title {{ font-size:20px; }}
-        .topbar {{ padding:10px 12px; gap:10px; }}
-    }}
+    .brand-title {{ font-family: Georgia, serif; font-size:28px; color:var(--petrol); margin:0; font-weight:700; text-align:center; }}
+    .brand-sub {{ color:var(--muted); margin:0; font-size:13px; text-align:center; }}
+    .card {{ border-radius:14px; background:var(--card); padding:16px; box-shadow:0 8px 30px rgba(15,58,69,0.04); border:1px solid rgba(15,58,69,0.04); max-width:920px; margin:auto 0 16px; }}
+    .stButton>button {{ background: linear-gradient(180deg, var(--gold), #b58f2d); color:#081214; font-weight:700; border-radius:10px; padding:8px 12px; box-shadow:0 6px 18px rgba(212,175,55,0.18); }}
+    .muted-small {{ color:var(--muted); font-size:13px; text-align:center; }}
+    .logo-round {{ border-radius:10px; display:block; margin:auto; }}
+    @media (max-width:640px) {{ .brand-title{{ font-size:20px }} .topbar{{ padding:10px; gap:10px }} }}
     </style>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
 
 # ---------------------------
-# Helpers - vision / preprocess / extraction (kept from working backend)
+# Helpers: Vision, preprocess, extraction (kept minimal & fast)
 # ---------------------------
 def preprocess_image(image_bytes: bytes) -> bytes:
     img = Image.open(BytesIO(image_bytes)).convert("RGB")
@@ -179,27 +102,27 @@ def preprocess_image(image_bytes: bytes) -> bytes:
     img.save(out, format="JPEG", quality=90)
     return out.getvalue()
 
-def get_vision_client():
+# cache the vision client resource to avoid re-creating repeatedly
+@st.cache_resource
+def get_vision_client_from_secrets():
     if "gcp_vision" in st.secrets:
-        sa_info = dict(st.secrets["gcp_vision"])
+        info = dict(st.secrets["gcp_vision"])
     elif "google_service_account" in st.secrets:
-        sa_info = dict(st.secrets["google_service_account"])
+        info = dict(st.secrets["google_service_account"])
     else:
         raise RuntimeError("Credentials Google Vision introuvables dans st.secrets (ajoute [gcp_vision])")
-    creds = SA_Credentials.from_service_account_info(sa_info)
-    client = vision.ImageAnnotatorClient(credentials=creds)
-    return client
+    creds = SA_Credentials.from_service_account_info(info)
+    return vision.ImageAnnotatorClient(credentials=creds)
 
 def google_vision_ocr(img_bytes: bytes) -> str:
-    client = get_vision_client()
+    client = get_vision_client_from_secrets()
     image = vision.Image(content=img_bytes)
     response = client.text_detection(image=image)
     if response.error and response.error.message:
         raise Exception(f"Google Vision Error: {response.error.message}")
-    raw = ""
     if response.text_annotations:
-        raw = response.text_annotations[0].description
-    return raw or ""
+        return response.text_annotations[0].description or ""
+    return ""
 
 def clean_text(text: str) -> str:
     text = text.replace("\r", "\n")
@@ -209,7 +132,7 @@ def clean_text(text: str) -> str:
     text = re.sub(r"\s+\n", "\n", text)
     return text.strip()
 
-# extraction helpers (unchanged)
+# Extraction helpers (kept as in working backend)
 def extract_invoice_number(text):
     p = r"FACTURE\s+EN\s+COMPTE.*?N[°o]?\s*([0-9]{3,})"
     m = re.search(p, text, flags=re.I)
@@ -221,9 +144,7 @@ def extract_invoice_number(text):
         if m:
             return m.group(1).strip()
     m = re.search(r"N°\s*([0-9]{3,})", text)
-    if m:
-        return m.group(1)
-    return ""
+    return m.group(1) if m else ""
 
 def extract_delivery_address(text):
     p = r"Adresse de livraison\s*[:\-]\s*(.+)"
@@ -232,27 +153,23 @@ def extract_delivery_address(text):
         return m.group(1).strip().rstrip(".")
     p2 = r"Adresse(?:\s+de\s+livraison)?\s*[:\-]?\s*\n?\s*(.+)"
     m2 = re.search(p2, text, flags=re.I)
-    if m2:
-        return m2.group(1).strip().split("\n")[0]
-    return ""
+    return m2.group(1).strip().split("\n")[0] if m2 else ""
 
 def extract_doit(text):
     p = r"\bDOIT\s*[:\-]?\s*([A-Z0-9]{2,6})"
     m = re.search(p, text, flags=re.I)
     if m:
         return m.group(1).strip()
-    candidates = ["S2M", "ULYS", "DLP"]
-    for c in candidates:
+    for c in ["S2M", "ULYS", "DLP"]:
         if c in text:
             return c
     return ""
 
 def extract_month(text):
     months = {
-        "janvier":"Janvier", "février":"Février", "fevrier":"Février", "mars":"Mars", "avril":"Avril",
-        "mai":"Mai", "juin":"Juin", "juillet":"Juillet", "août":"Août", "aout":"Août",
-        "septembre":"Septembre", "octobre":"Octobre",
-        "novembre":"Novembre", "décembre":"Décembre", "decembre":"Décembre"
+        "janvier":"Janvier","février":"Février","fevrier":"Février","mars":"Mars","avril":"Avril",
+        "mai":"Mai","juin":"Juin","juillet":"Juillet","août":"Août","aout":"Août",
+        "septembre":"Septembre","octobre":"Octobre","novembre":"Novembre","décembre":"Décembre","decembre":"Décembre"
     }
     for mname in months:
         if re.search(r"\b" + re.escape(mname) + r"\b", text, flags=re.I):
@@ -264,9 +181,7 @@ def extract_bon_commande(text):
     if m:
         return m.group(1).strip()
     m2 = re.search(r"bon de commande\s*[:\-]?\s*(.+)", text, flags=re.I)
-    if m2:
-        return m2.group(1).strip().split()[0]
-    return ""
+    return (m2.group(1).strip().split()[0]) if m2 else ""
 
 def extract_items(text):
     items = []
@@ -291,6 +206,7 @@ def extract_items(text):
 
 def invoice_pipeline(image_bytes: bytes):
     cleaned = preprocess_image(image_bytes)
+    # progress handled in UI wrapper, keep this function focused
     raw = google_vision_ocr(cleaned)
     raw = clean_text(raw)
     return {
@@ -304,7 +220,7 @@ def invoice_pipeline(image_bytes: bytes):
     }
 
 # ---------------------------
-# Google Sheets helpers (from st.secrets)
+# Google Sheets helpers
 # ---------------------------
 def _get_sheet_id():
     if "settings" in st.secrets and "sheet_id" in st.secrets["settings"]:
@@ -314,6 +230,7 @@ def _get_sheet_id():
     raise KeyError("Mettez 'sheet_id' dans st.secrets['settings'] ou 'SHEET_ID' dans st.secrets")
 
 def get_worksheet():
+    # returns gspread worksheet or raises
     if "gcp_sheet" in st.secrets:
         sa_info = dict(st.secrets["gcp_sheet"])
     elif "google_service_account" in st.secrets:
@@ -325,7 +242,8 @@ def get_worksheet():
     sh = client.open_by_key(sheet_id)
     return sh.sheet1
 
-def get_sheets_service():
+@st.cache_resource
+def get_sheets_service_from_secrets():
     if "gcp_sheet" in st.secrets:
         sa_info = dict(st.secrets["gcp_sheet"])
     elif "google_service_account" in st.secrets:
@@ -333,40 +251,29 @@ def get_sheets_service():
     else:
         raise FileNotFoundError("Credentials Google Sheets introuvables dans st.secrets")
     creds = SA_Credentials.from_service_account_info(sa_info, scopes=["https://www.googleapis.com/auth/spreadsheets"])
-    service = build("sheets", "v4", credentials=creds)
-    return service
+    return build("sheets", "v4", credentials=creds)
 
-def color_rows(spreadsheet_id, sheet_id, start, end, scan_index):
-    """
-    Apply two-color alternating background: default (white) and theme (petrol).
-    `start` and `end` are 0-index row indexes (end exclusive).
-    We compute each row color based on its absolute row index so repeated runs keep alternation.
-    """
-    service = get_sheets_service()
-    requests = []
-    for r in range(start, end):
-        # determine color: alternate based on row number (even -> default white, odd -> theme)
-        if (r % 2) == 0:
-            color = SHEET_COLOR_DEFAULT
-        else:
-            color = SHEET_COLOR_THEME
-        requests.append({
-            "repeatCell": {
-                "range": {
-                    "sheetId": sheet_id,
-                    "startRowIndex": r,
-                    "endRowIndex": r+1
-                },
-                "cell": {"userEnteredFormat": {"backgroundColor": color}},
-                "fields": "userEnteredFormat.backgroundColor"
+def color_rows(spreadsheet_id, sheet_id, start, end, color):
+    service = get_sheets_service_from_secrets()
+    body = {
+        "requests":[
+            {
+                "repeatCell":{
+                    "range":{
+                        "sheetId": sheet_id,
+                        "startRowIndex": start,
+                        "endRowIndex": end
+                    },
+                    "cell": {"userEnteredFormat": {"backgroundColor": color}},
+                    "fields": "userEnteredFormat.backgroundColor"
+                }
             }
-        })
-    if requests:
-        body = {"requests": requests}
-        service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
+        ]
+    }
+    service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
 
 # ---------------------------
-# Session init
+# Session & scan index (two-state toggler)
 # ---------------------------
 if "scan_index" not in st.session_state:
     try:
@@ -375,55 +282,32 @@ if "scan_index" not in st.session_state:
         st.session_state.scan_index = 0
 
 # ---------------------------
-# Header rendering (logo + title) centered
+# Header rendering (logo + centered title)
 # ---------------------------
 def render_header():
     st.markdown("<div class='topbar-wrapper'>", unsafe_allow_html=True)
-    # show logo centered with title
-    if os.path.exists(LOGO_FILENAME):
-        try:
-            logo = Image.open(LOGO_FILENAME).convert("RGBA")
-            # center container: logo + text
-            st.markdown(
-                "<div class='topbar'>"
-                f"<div class='logo-box'><img src='data:image/png;base64,{_img_to_base64(logo)}' width='84' style='border-radius:8px;'/></div>"
-                f"<div style='text-align:left;margin-left:10px;'>"
-                f"<h1 class='brand-title' style='margin:0'>{BRAND_TITLE}</h1>"
-                f"<div class='brand-sub'>{BRAND_SUB}</div>"
-                f"</div>"
-                "</div>",
-                unsafe_allow_html=True
-            )
-            st.markdown("</div>", unsafe_allow_html=True)
-            return
-        except Exception:
-            # fallthrough to simpler markup
-            pass
-    # fallback if no logo or error
-    st.markdown(
-        "<div class='topbar'>"
-        f"<div style='text-align:center;width:100%;'><h1 class='brand-title' style='margin:0'>{BRAND_TITLE}</h1><div class='brand-sub'>{BRAND_SUB}</div></div>"
-        "</div>",
-        unsafe_allow_html=True
-    )
+    # centered layout via columns
+    cols = st.columns([1, 6, 1])
+    with cols[1]:
+        st.markdown("<div class='topbar'>", unsafe_allow_html=True)
+        if os.path.exists(LOGO_FILENAME):
+            try:
+                logo = Image.open(LOGO_FILENAME).convert("RGBA")
+                st.image(logo, width=92, use_column_width=False)
+            except Exception:
+                pass
+        st.markdown(f"<div style='margin-left:8px'><h2 class='brand-title'>{BRAND_TITLE}</h2><div class='brand-sub'>{BRAND_SUB}</div></div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
-
-# helper to convert PIL image to base64 for inline embedding
-def _img_to_base64(img: Image.Image) -> str:
-    import base64
-    buf = BytesIO()
-    img.save(buf, format="PNG")
-    b = base64.b64encode(buf.getvalue()).decode("utf-8")
-    return b
 
 render_header()
 
 # ---------------------------
-# Authentication (simple UI)
+# Simple auth UI
 # ---------------------------
 def login_block():
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("### 🔐 Connexion")
+    st.markdown("<h3 style='text-align:center'>🔐 Connexion</h3>", unsafe_allow_html=True)
     nom = st.text_input("Nom (ex: DIRECTION)", key="login_nom")
     mat = st.text_input("Matricule", type="password", key="login_mat")
     if st.button("Se connecter"):
@@ -431,7 +315,7 @@ def login_block():
             st.session_state.auth = True
             st.session_state.user_nom = nom.upper()
             st.session_state.user_matricule = mat
-            st.success("Connexion OK — Bienvenue " + st.session_state.user_nom)
+            st.success(f"Connexion OK — Bienvenue {st.session_state.user_nom}")
             try:
                 st.experimental_rerun()
             except Exception:
@@ -442,18 +326,17 @@ def login_block():
 
 if "auth" not in st.session_state:
     st.session_state.auth = False
-
 if not st.session_state.auth:
     login_block()
     st.stop()
 
 # ---------------------------
-# Main UI - Upload and OCR
+# Upload + OCR UI (with progress)
 # ---------------------------
 st.markdown("<div class='card'>", unsafe_allow_html=True)
-st.markdown("### 📥 Importer une facture")
-st.markdown("<div class='muted-small'>Formats acceptés: jpg, jpeg, png — qualité recommandée: photo nette</div>", unsafe_allow_html=True)
-uploaded = st.file_uploader("", type=["jpg","jpeg","png"])
+st.markdown("<h3 style='text-align:center'>📥 Importer une facture</h3>", unsafe_allow_html=True)
+st.markdown("<div class='muted-small'>Formats acceptés: jpg, jpeg, png — photo nette recommandée</div>", unsafe_allow_html=True)
+uploaded = st.file_uploader("", type=["jpg","jpeg","png"], key="uploader")
 st.markdown("</div>", unsafe_allow_html=True)
 
 img = None
@@ -463,26 +346,29 @@ if uploaded:
     except Exception as e:
         st.error("Image non lisible : " + str(e))
 
-# store edited df if not present
 if "edited_articles_df" not in st.session_state:
     st.session_state["edited_articles_df"] = None
 
 if img:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.image(img, caption="Aperçu", use_column_width=True)
-    buf = BytesIO()
-    img.save(buf, format="JPEG")
-    img_bytes = buf.getvalue()
+    buf = BytesIO(); img.save(buf, format="JPEG"); img_bytes = buf.getvalue()
 
-    st.info("Traitement OCR Google Vision...")
-    p = st.progress(8)
+    # progress bar restore: show meaningful steps
+    p = st.progress(5)
     try:
+        p.progress(15)
+        # small debounce to make UX visible
+        time.sleep(0.06)
+        p.progress(35)
         res = invoice_pipeline(img_bytes)
+        p.progress(80)
+        time.sleep(0.05)
+        p.progress(100)
     except Exception as e:
-        st.error(f"Erreur OCR: {e}")
         p.empty()
+        st.error(f"Erreur OCR: {e}")
         st.stop()
-    p.progress(100)
     p.empty()
 
     # Detection fields
@@ -497,11 +383,9 @@ if img:
     mois_val = col2.selectbox("📅 Mois", months_list, index=(0 if not month_detected else months_list.index(month_detected)))
     st.markdown("</div>", unsafe_allow_html=True)
 
-    # Articles table editor
+    # Articles editor
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    detected_articles = res.get("articles", [])
-    if not detected_articles:
-        detected_articles = [{"article": "", "bouteilles": 0}]
+    detected_articles = res.get("articles", []) or [{"article": "", "bouteilles": 0}]
     df_articles = pd.DataFrame(detected_articles)
     if "article" not in df_articles.columns:
         df_articles["article"] = ""
@@ -524,13 +408,10 @@ if img:
         new_row = pd.DataFrame([{"article": "", "bouteilles": 0}])
         edited_df = pd.concat([edited_df, new_row], ignore_index=True)
         st.session_state["edited_articles_df"] = edited_df
-        try:
-            st.experimental_rerun()
-        except Exception:
-            pass
+        try: st.experimental_rerun()
+        except Exception: pass
 
     st.session_state["edited_articles_df"] = edited_df.copy()
-
     st.subheader("Texte brut (résultat OCR)")
     st.code(res["raw"])
     st.markdown("</div>", unsafe_allow_html=True)
@@ -540,15 +421,15 @@ if img:
 # ---------------------------
 try:
     ws = get_worksheet()
-    sheet_id = ws.id
+    sheet_gid = ws.id
     spreadsheet_id = _get_sheet_id()
 except Exception:
     ws = None
-    sheet_id = None
+    sheet_gid = None
     spreadsheet_id = None
 
 # ---------------------------
-# ENVOI -> Google Sheets (no preview button)
+# Send to Google Sheets (no preview button)
 # ---------------------------
 if img and st.session_state.get("edited_articles_df") is not None:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
@@ -558,12 +439,11 @@ if img and st.session_state.get("edited_articles_df") is not None:
     if ws and st.button("📤 Envoyer vers Google Sheets"):
         try:
             edited = st.session_state["edited_articles_df"].copy()
+            # drop empty lines
             edited = edited[~((edited["article"].astype(str).str.strip() == "") & (edited["bouteilles"] == 0))]
             edited["bouteilles"] = pd.to_numeric(edited["bouteilles"].fillna(0), errors="coerce").fillna(0).astype(int)
 
-            # compute start row (1-based)
-            existing = ws.get_all_values()
-            start_row = len(existing) + 1
+            start_row = len(ws.get_all_values()) + 1
             today_str = datetime.now().strftime("%d/%m/%Y")
 
             for _, row in edited.iterrows():
@@ -580,12 +460,14 @@ if img and st.session_state.get("edited_articles_df") is not None:
 
             end_row = len(ws.get_all_values())
 
-            # color rows with two-color alternation using absolute row index (0-based)
-            if spreadsheet_id and sheet_id is not None:
-                # convert start_row (1-based) to 0-based start index
-                color_rows(spreadsheet_id, sheet_id, start_row-1, end_row, st.session_state.get("scan_index", 0))
+            # alternate only between two states (white <-> petrol)
+            idx = st.session_state.get("scan_index", 0) % 2
+            color = SHEET_COLORS[idx]
+            if spreadsheet_id and sheet_gid is not None:
+                color_rows(spreadsheet_id, sheet_gid, start_row-1, end_row, color)
 
-            st.session_state["scan_index"] = st.session_state.get("scan_index", 0) + 1
+            # flip state (0->1->0->1)
+            st.session_state["scan_index"] = (st.session_state.get("scan_index", 0) + 1) % 2
 
             st.success("✅ Données insérées avec succès !")
             st.info(f"📌 Lignes insérées dans le sheet : {start_row} → {end_row}")
@@ -610,9 +492,5 @@ if st.button("🚪 Déconnexion"):
     for k in ["auth", "user_nom", "user_matricule"]:
         if k in st.session_state:
             del st.session_state[k]
-    try:
-        st.experimental_rerun()
-    except Exception:
-        pass
-
-# End of file
+    try: st.experimental_rerun()
+    except Exception: pass
