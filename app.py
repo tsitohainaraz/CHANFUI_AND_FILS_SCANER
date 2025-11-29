@@ -8,6 +8,7 @@ import numpy as np
 import re
 import time
 import os
+import base64
 from datetime import datetime
 from io import BytesIO
 from PIL import Image, ImageFilter, ImageOps
@@ -60,6 +61,10 @@ PALETTE = {
 # Petrol #0F3A45 -> (15,58,69) /255
 SHEET_COLOR_THEME = {"red": 15/255.0, "green": 58/255.0, "blue": 69/255.0}
 SHEET_COLOR_DEFAULT = {"red": 1.0, "green": 1.0, "blue": 1.0}
+
+# Text color corresponding to background (floats)
+TEXT_COLOR_WHITE = {"red": 1.0, "green": 1.0, "blue": 1.0}
+TEXT_COLOR_BLACK = {"red": 0.0, "green": 0.0, "blue": 0.0}
 
 # ---------------------------
 # Styles (premium)
@@ -180,6 +185,7 @@ def preprocess_image(image_bytes: bytes) -> bytes:
     return out.getvalue()
 
 def get_vision_client():
+    # read service account dict from st.secrets["gcp_vision"] or alternative
     if "gcp_vision" in st.secrets:
         sa_info = dict(st.secrets["gcp_vision"])
     elif "google_service_account" in st.secrets:
@@ -336,20 +342,29 @@ def get_sheets_service():
     service = build("sheets", "v4", credentials=creds)
     return service
 
+def _sheet_text_color_for_bg(color):
+    # color is dict floats; if theme -> white text, if white -> black text
+    if color == SHEET_COLOR_THEME:
+        return TEXT_COLOR_WHITE
+    return TEXT_COLOR_BLACK
+
 def color_rows(spreadsheet_id, sheet_id, start, end, scan_index):
     """
     Apply two-color alternating background: default (white) and theme (petrol).
     `start` and `end` are 0-index row indexes (end exclusive).
-    We compute each row color based on its absolute row index so repeated runs keep alternation.
+    We compute each row color based on absolute row index so repeated runs keep alternation.
+    Also set text color for readability.
     """
     service = get_sheets_service()
     requests = []
     for r in range(start, end):
-        # determine color: alternate based on row number (even -> default white, odd -> theme)
+        # alternate based on absolute row index (0-based)
         if (r % 2) == 0:
-            color = SHEET_COLOR_DEFAULT
+            bg = SHEET_COLOR_DEFAULT
+            text_color = TEXT_COLOR_BLACK
         else:
-            color = SHEET_COLOR_THEME
+            bg = SHEET_COLOR_THEME
+            text_color = TEXT_COLOR_WHITE
         requests.append({
             "repeatCell": {
                 "range": {
@@ -357,8 +372,15 @@ def color_rows(spreadsheet_id, sheet_id, start, end, scan_index):
                     "startRowIndex": r,
                     "endRowIndex": r+1
                 },
-                "cell": {"userEnteredFormat": {"backgroundColor": color}},
-                "fields": "userEnteredFormat.backgroundColor"
+                "cell": {
+                    "userEnteredFormat": {
+                        "backgroundColor": bg,
+                        "textFormat": {
+                            "foregroundColor": text_color
+                        }
+                    }
+                },
+                "fields": "userEnteredFormat(backgroundColor,textFormat)"
             }
         })
     if requests:
@@ -374,6 +396,13 @@ if "scan_index" not in st.session_state:
     except Exception:
         st.session_state.scan_index = 0
 
+# helper to convert PIL image to base64 for inline embedding
+def _img_to_base64(img: Image.Image) -> str:
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    b = base64.b64encode(buf.getvalue()).decode("utf-8")
+    return b
+
 # ---------------------------
 # Header rendering (logo + title) centered
 # ---------------------------
@@ -383,11 +412,11 @@ def render_header():
     if os.path.exists(LOGO_FILENAME):
         try:
             logo = Image.open(LOGO_FILENAME).convert("RGBA")
-            # center container: logo + text
+            b64 = _img_to_base64(logo)
             st.markdown(
                 "<div class='topbar'>"
-                f"<div class='logo-box'><img src='data:image/png;base64,{_img_to_base64(logo)}' width='84' style='border-radius:8px;'/></div>"
-                f"<div style='text-align:left;margin-left:10px;'>"
+                f"<div class='logo-box'><img src='data:image/png;base64,{b64}' width='84' style='border-radius:8px;margin-right:12px;'/></div>"
+                f"<div style='display:flex;flex-direction:column;justify-content:center;'>"
                 f"<h1 class='brand-title' style='margin:0'>{BRAND_TITLE}</h1>"
                 f"<div class='brand-sub'>{BRAND_SUB}</div>"
                 f"</div>"
@@ -397,7 +426,6 @@ def render_header():
             st.markdown("</div>", unsafe_allow_html=True)
             return
         except Exception:
-            # fallthrough to simpler markup
             pass
     # fallback if no logo or error
     st.markdown(
@@ -408,14 +436,6 @@ def render_header():
     )
     st.markdown("</div>", unsafe_allow_html=True)
 
-# helper to convert PIL image to base64 for inline embedding
-def _img_to_base64(img: Image.Image) -> str:
-    import base64
-    buf = BytesIO()
-    img.save(buf, format="PNG")
-    b = base64.b64encode(buf.getvalue()).decode("utf-8")
-    return b
-
 render_header()
 
 # ---------------------------
@@ -423,7 +443,7 @@ render_header()
 # ---------------------------
 def login_block():
     st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("### 🔐 Connexion")
+    st.markdown("<h3 style='text-align:center'>🔐 Connexion</h3>", unsafe_allow_html=True)
     nom = st.text_input("Nom (ex: DIRECTION)", key="login_nom")
     mat = st.text_input("Matricule", type="password", key="login_mat")
     if st.button("Se connecter"):
@@ -431,7 +451,7 @@ def login_block():
             st.session_state.auth = True
             st.session_state.user_nom = nom.upper()
             st.session_state.user_matricule = mat
-            st.success("Connexion OK — Bienvenue " + st.session_state.user_nom)
+            st.success(f"Connexion OK — Bienvenue {st.session_state.user_nom}")
             try:
                 st.experimental_rerun()
             except Exception:
@@ -451,9 +471,9 @@ if not st.session_state.auth:
 # Main UI - Upload and OCR
 # ---------------------------
 st.markdown("<div class='card'>", unsafe_allow_html=True)
-st.markdown("### 📥 Importer une facture")
+st.markdown("<h3 style='text-align:center'>📥 Importer une facture</h3>", unsafe_allow_html=True)
 st.markdown("<div class='muted-small'>Formats acceptés: jpg, jpeg, png — qualité recommandée: photo nette</div>", unsafe_allow_html=True)
-uploaded = st.file_uploader("", type=["jpg","jpeg","png"])
+uploaded = st.file_uploader("", type=["jpg","jpeg","png"], key="uploader")
 st.markdown("</div>", unsafe_allow_html=True)
 
 img = None
@@ -475,7 +495,7 @@ if img:
     img_bytes = buf.getvalue()
 
     st.info("Traitement OCR Google Vision...")
-    p = st.progress(8)
+    p = st.progress(5)
     try:
         res = invoice_pipeline(img_bytes)
     except Exception as e:
