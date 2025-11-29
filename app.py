@@ -350,21 +350,23 @@ def _sheet_text_color_for_bg(color):
 
 def color_rows(spreadsheet_id, sheet_id, start, end, scan_index):
     """
-    Coloration par FACTURE, pas par ligne.
-    Toute la facture = une seule couleur.
-    Alternance : blanc → bleu pétrole → blanc → bleu pétrole → ...
+    Coloration PAR FACTURE (par opération d’envoi).
+    - Toutes les lignes envoyées en une seule fois = même couleur
+    - Alternance : blanc → bleu pétrole → blanc → bleu pétrole → ...
+    - start / end : index 0-based (end exclus)
     """
+
     service = get_sheets_service()
 
-    # --- Sélection de la couleur basée sur le numéro de facture ---
+    # --- Choix de couleur basé sur l'index du scan ---
     if scan_index % 2 == 0:
-        bg = SHEET_COLOR_DEFAULT      # blanc
+        bg = SHEET_COLOR_DEFAULT      # Blanc
         text_color = TEXT_COLOR_BLACK
     else:
-        bg = SHEET_COLOR_THEME        # bleu pétrole
+        bg = SHEET_COLOR_THEME        # Bleu pétrole
         text_color = TEXT_COLOR_WHITE
 
-    # --- Une seule requête qui colore TOUT le bloc ---
+    # --- Construire la requête unique pour colorer tout le bloc ---
     body = {
         "requests": [
             {
@@ -388,10 +390,12 @@ def color_rows(spreadsheet_id, sheet_id, start, end, scan_index):
         ]
     }
 
+    # --- Exécuter la coloration dans Google Sheets ---
     service.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id,
         body=body
     ).execute()
+
 
 # ---------------------------
 # Session init
@@ -685,5 +689,6 @@ if st.button("🚪 Déconnexion"):
         pass
 
 # End of file
+
 
 
