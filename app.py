@@ -350,42 +350,48 @@ def _sheet_text_color_for_bg(color):
 
 def color_rows(spreadsheet_id, sheet_id, start, end, scan_index):
     """
-    Apply two-color alternating background: default (white) and theme (petrol).
-    `start` and `end` are 0-index row indexes (end exclusive).
-    We compute each row color based on absolute row index so repeated runs keep alternation.
-    Also set text color for readability.
+    Coloration par FACTURE, pas par ligne.
+    Toute la facture = une seule couleur.
+    Alternance : blanc → bleu pétrole → blanc → bleu pétrole → ...
     """
     service = get_sheets_service()
-    requests = []
-    for r in range(start, end):
-        # alternate based on absolute row index (0-based)
-        if (r % 2) == 0:
-            bg = SHEET_COLOR_DEFAULT
-            text_color = TEXT_COLOR_BLACK
-        else:
-            bg = SHEET_COLOR_THEME
-            text_color = TEXT_COLOR_WHITE
-        requests.append({
-            "repeatCell": {
-                "range": {
-                    "sheetId": sheet_id,
-                    "startRowIndex": r,
-                    "endRowIndex": r+1
-                },
-                "cell": {
-                    "userEnteredFormat": {
-                        "backgroundColor": bg,
-                        "textFormat": {
-                            "foregroundColor": text_color
+
+    # --- Sélection de la couleur basée sur le numéro de facture ---
+    if scan_index % 2 == 0:
+        bg = SHEET_COLOR_DEFAULT      # blanc
+        text_color = TEXT_COLOR_BLACK
+    else:
+        bg = SHEET_COLOR_THEME        # bleu pétrole
+        text_color = TEXT_COLOR_WHITE
+
+    # --- Une seule requête qui colore TOUT le bloc ---
+    body = {
+        "requests": [
+            {
+                "repeatCell": {
+                    "range": {
+                        "sheetId": sheet_id,
+                        "startRowIndex": start,
+                        "endRowIndex": end
+                    },
+                    "cell": {
+                        "userEnteredFormat": {
+                            "backgroundColor": bg,
+                            "textFormat": {
+                                "foregroundColor": text_color
+                            }
                         }
-                    }
-                },
-                "fields": "userEnteredFormat(backgroundColor,textFormat)"
+                    },
+                    "fields": "userEnteredFormat(backgroundColor,textFormat)"
+                }
             }
-        })
-    if requests:
-        body = {"requests": requests}
-        service.spreadsheets().batchUpdate(spreadsheetId=spreadsheet_id, body=body).execute()
+        ]
+    }
+
+    service.spreadsheets().batchUpdate(
+        spreadsheetId=spreadsheet_id,
+        body=body
+    ).execute()
 
 # ---------------------------
 # Session init
@@ -679,4 +685,5 @@ if st.button("🚪 Déconnexion"):
         pass
 
 # End of file
+
 
