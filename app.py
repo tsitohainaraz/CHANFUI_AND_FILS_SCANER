@@ -444,21 +444,64 @@ render_header()
 def login_block():
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<h3 style='text-align:center'>🔐 Connexion</h3>", unsafe_allow_html=True)
+    
     nom = st.text_input("Nom (ex: DIRECTION)", key="login_nom")
     mat = st.text_input("Matricule", type="password", key="login_mat")
+
     if st.button("Se connecter"):
         if nom and nom.upper() in AUTHORIZED_USERS and AUTHORIZED_USERS[nom.upper()] == mat:
             st.session_state.auth = True
             st.session_state.user_nom = nom.upper()
             st.session_state.user_matricule = mat
-            st.success(f"Connexion OK — Bienvenue {st.session_state.user_nom}")
+
+            # --- SUCCESS premium petrol ---
+            st.markdown(
+                f"""
+                <div style="
+                    background-color: #0F3A45;
+                    padding: 12px 16px;
+                    border-radius: 8px;
+                    color: white;
+                    font-weight: 600;
+                    text-align: center;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.10);
+                    border-left: 5px solid #D4AF37;
+                    margin-top: 10px;
+                ">
+                    ✅ ID vérifié — Bienvenue {st.session_state.user_nom} Veuillez appuyer à nouveau sur Connexion
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
             try:
                 st.experimental_rerun()
             except Exception:
                 pass
+
         else:
-            st.error("Accès refusé — Nom ou matricule invalide")
+            # --- ERROR premium petrol ---
+            st.markdown(
+                """
+                <div style="
+                    background-color: #8A1F1F;
+                    padding: 12px 16px;
+                    border-radius: 8px;
+                    color: white;
+                    font-weight: 600;
+                    text-align: center;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.10);
+                    border-left: 5px solid #D4AF37;
+                    margin-top: 10px;
+                ">
+                    ❌ Accès refusé — Nom ou matricule invalide
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
     st.markdown("</div>", unsafe_allow_html=True)
+
 
 if "auth" not in st.session_state:
     st.session_state.auth = False
@@ -636,3 +679,4 @@ if st.button("🚪 Déconnexion"):
         pass
 
 # End of file
+
