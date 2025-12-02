@@ -499,4 +499,377 @@ def login_block():
                     border-radius: 8px;
                     color: white;
                     font-weight: 600;
-                    text-align: c
+                    text-align: center;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.10);
+                    border-left: 5px solid #D4AF37;
+                    margin-top: 10px;
+                ">
+                    ✅ ID vérifié — Bienvenue {st.session_state.user_nom} Veuillez appuyer à nouveau sur Connexion
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+            try:
+                st.experimental_rerun()
+            except Exception:
+                pass
+
+        else:
+            # --- ERROR premium petrol ---
+            st.markdown(
+                """
+                <div style="
+                    background-color: #8A1F1F;
+                    padding: 12px 16px;
+                    border-radius: 8px;
+                    color: white;
+                    font-weight: 600;
+                    text-align: center;
+                    box-shadow: 0 4px 12px rgba(0,0,0,0.10);
+                    border-left: 5px solid #D4AF37;
+                    margin-top: 10px;
+                ">
+                    ❌ Accès refusé — Nom ou matricule invalide
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+
+    st.markdown("</div>", unsafe_allow_html=True)
+
+
+if "auth" not in st.session_state:
+    st.session_state.auth = False
+
+if not st.session_state.auth:
+    login_block()
+    st.stop()
+
+# ---------------------------
+# MODE SELECTION (Facture / BDC)
+# ---------------------------
+if "mode" not in st.session_state:
+    st.session_state.mode = None
+
+st.markdown("<div class='card'>", unsafe_allow_html=True)
+st.markdown("<h3 style='text-align:center'>📌 Choisissez un mode de scan</h3>", unsafe_allow_html=True)
+
+colA, colB = st.columns(2)
+with colA:
+    if st.button("📄 Scanner Facture", use_container_width=True):
+        st.session_state.mode = "facture"
+
+with colB:
+    if st.button("📝 Scanner Bon de commande", use_container_width=True):
+        st.session_state.mode = "bdc"
+
+st.markdown("</div>", unsafe_allow_html=True)
+
+if st.session_state.mode is None:
+    st.stop()
+
+# ---------------------------
+# Main UI - Upload and OCR (switch by mode)
+# ---------------------------
+
+# ---------------------------
+# FACTURE mode (existing UI)
+# ---------------------------
+if st.session_state.mode == "facture":
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align:center'>📥 Importer une facture</h3>", unsafe_allow_html=True)
+    st.markdown("<div class='muted-small'>Formats acceptés: jpg, jpeg, png — qualité recommandée: photo nette</div>", unsafe_allow_html=True)
+    uploaded = st.file_uploader("", type=["jpg","jpeg","png"], key="uploader_facture")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    img = None
+    if uploaded:
+        try:
+            img = Image.open(uploaded)
+        except Exception as e:
+            st.error("Image non lisible : " + str(e))
+
+    # store edited df if not present
+    if "edited_articles_df" not in st.session_state:
+        st.session_state["edited_articles_df"] = None
+
+    if img:
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        st.image(img, caption="Aperçu", use_column_width=True)
+        buf = BytesIO()
+        img.save(buf, format="JPEG")
+        img_bytes = buf.getvalue()
+
+        st.info("Traitement OCR Google Vision...")
+        p = st.progress(5)
+        try:
+            res = invoice_pipeline(img_bytes)
+        except Exception as e:
+            st.error(f"Erreur OCR: {e}")
+            p.empty()
+            st.stop()
+        p.progress(100)
+        p.empty()
+
+        # Detection fields
+        st.subheader("Informations détectées (modifiable)")
+        col1, col2 = st.columns(2)
+        facture_val = col1.text_input("🔢 Numéro de facture", value=res.get("facture", ""))
+        bon_commande_val = col1.text_input("📦 Suivant votre bon de commande", value=res.get("bon_commande", ""))
+        adresse_val = col2.text_input("📍 Adresse de livraison", value=res.get("adresse", ""))
+        doit_val = col2.text_input("👤 DOIT", value=res.get("doit", ""))
+        month_detected = res.get("mois", "")
+        months_list = ["","Janvier","Février","Mars","Avril","Mai","Juin","Juillet","Août","Septembre","Octobre","Novembre","Décembre"]
+        mois_val = col2.selectbox("📅 Mois", months_list, index=(0 if not month_detected else months_list.index(month_detected)))
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        # Articles table editor
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        detected_articles = res.get("articles", [])
+        if not detected_articles:
+            detected_articles = [{"article": "", "bouteilles": 0}]
+        df_articles = pd.DataFrame(detected_articles)
+        if "article" not in df_articles.columns:
+            df_articles["article"] = ""
+        if "bouteilles" not in df_articles.columns:
+            df_articles["bouteilles"] = 0
+        df_articles["bouteilles"] = pd.to_numeric(df_articles["bouteilles"].fillna(0), errors="coerce").fillna(0).astype(int)
+
+        st.subheader("Articles détectés (modifiable)")
+        edited_df = st.data_editor(
+            df_articles,
+            num_rows="dynamic",
+            column_config={
+                "article": st.column_config.TextColumn(label="Article"),
+                "bouteilles": st.column_config.NumberColumn(label="Nb bouteilles", min_value=0)
+            },
+            use_container_width=True
+        )
+
+        if st.button("➕ Ajouter une ligne"):
+            new_row = pd.DataFrame([{"article": "", "bouteilles": 0}])
+            edited_df = pd.concat([edited_df, new_row], ignore_index=True)
+            st.session_state["edited_articles_df"] = edited_df
+            try:
+                st.experimental_rerun()
+            except Exception:
+                pass
+
+        st.session_state["edited_articles_df"] = edited_df.copy()
+
+        st.subheader("Texte brut (résultat OCR)")
+        st.code(res["raw"])
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # ---------------------------
+    # Prepare worksheet (non-blocking)
+    # ---------------------------
+    try:
+        ws = get_worksheet()
+        sheet_id = ws.id
+        spreadsheet_id = _get_sheet_id()
+    except Exception:
+        ws = None
+        sheet_id = None
+        spreadsheet_id = None
+
+    # ---------------------------
+    # ENVOI -> Google Sheets (no preview button)
+    # ---------------------------
+    if img and st.session_state.get("edited_articles_df") is not None:
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        if ws is None:
+            st.info("Google Sheets non configuré ou credentials manquants — vérifie .streamlit/secrets.toml")
+            st.markdown("<div class='muted-small'>Astuce: mets [gcp_sheet] et [gcp_vision] et [settings] avec sheet_id dans .streamlit/secrets.toml</div>", unsafe_allow_html=True)
+        if ws and st.button("📤 Envoyer vers Google Sheets"):
+            try:
+                edited = st.session_state["edited_articles_df"].copy()
+                edited = edited[~((edited["article"].astype(str).str.strip() == "") & (edited["bouteilles"] == 0))]
+                edited["bouteilles"] = pd.to_numeric(edited["bouteilles"].fillna(0), errors="coerce").fillna(0).astype(int)
+
+                # compute start row (1-based)
+                existing = ws.get_all_values()
+                start_row = len(existing) + 1
+                today_str = datetime.now().strftime("%d/%m/%Y")
+
+                for _, row in edited.iterrows():
+                    ws.append_row([
+                        mois_val or "",
+                        doit_val or "",
+                        today_str,
+                        bon_commande_val or "",
+                        adresse_val or "",
+                        row.get("article", ""),
+                        int(row.get("bouteilles", 0)),
+                        st.session_state.user_nom
+                    ])
+
+                end_row = len(ws.get_all_values())
+
+                # color rows with two-color alternation using absolute row index (0-based)
+                if spreadsheet_id and sheet_id is not None:
+                    # convert start_row (1-based) to 0-based start index
+                    color_rows(spreadsheet_id, sheet_id, start_row-1, end_row, st.session_state.get("scan_index", 0))
+
+                st.session_state["scan_index"] = st.session_state.get("scan_index", 0) + 1
+
+                st.success("✅ Données insérées avec succès !")
+                st.info(f"📌 Lignes insérées dans le sheet : {start_row} → {end_row}")
+                st.json({
+                    "mois": mois_val,
+                    "doit": doit_val,
+                    "date_envoye": today_str,
+                    "bon_de_commande": bon_commande_val,
+                    "adresse": adresse_val,
+                    "nb_lignes_envoyees": len(edited),
+                    "editeur": st.session_state.user_nom
+                })
+            except Exception as e:
+                st.error(f"❌ Erreur envoi Sheets: {e}")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    # Retour au menu
+    if st.button("⬅️ Retour au menu principal"):
+        st.session_state.mode = None
+        try:
+            st.experimental_rerun()
+        except Exception:
+            pass
+
+# ---------------------------
+# BDC mode (Bon de commande)
+# ---------------------------
+if st.session_state.mode == "bdc":
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align:center'>📝 Importer un Bon de commande</h3>", unsafe_allow_html=True)
+    st.markdown("<div class='muted-small'>Formats acceptés: jpg, jpeg, png — qualité recommandée: photo nette</div>", unsafe_allow_html=True)
+    uploaded_bdc = st.file_uploader("", type=["jpg","jpeg","png"], key="uploader_bdc")
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    if uploaded_bdc:
+        try:
+            img_bdc = Image.open(uploaded_bdc)
+        except Exception as e:
+            st.error("Image non lisible : " + str(e))
+            img_bdc = None
+
+        if img_bdc:
+            st.markdown("<div class='card'>", unsafe_allow_html=True)
+            st.image(img_bdc, caption="Aperçu BDC", use_column_width=True)
+            buf = BytesIO()
+            img_bdc.save(buf, format="JPEG")
+            img_bdc_bytes = buf.getvalue()
+
+            st.info("Traitement OCR Google Vision (BDC)...")
+            p = st.progress(5)
+            try:
+                res_bdc = bdc_pipeline(img_bdc_bytes)
+            except Exception as e:
+                st.error(f"Erreur OCR (BDC): {e}")
+                p.empty()
+                st.stop()
+            p.progress(100)
+            p.empty()
+
+            st.subheader("Informations détectées (modifiable)")
+            numero_val = st.text_input("🔢 Numéro BDC", value=res_bdc.get("numero", ""))
+            client_val = st.text_input("👤 Client", value=res_bdc.get("client", ""))
+            date_val = st.text_input("📅 Date", value=res_bdc.get("date", ""))
+
+            st.markdown("</div>", unsafe_allow_html=True)
+
+            st.markdown("<div class='card'>", unsafe_allow_html=True)
+            st.subheader("Articles détectés (modifiable)")
+            df_bdc_articles = pd.DataFrame(res_bdc.get("articles", []))
+            if "article" not in df_bdc_articles.columns:
+                df_bdc_articles["article"] = ""
+            if "bouteilles" not in df_bdc_articles.columns:
+                df_bdc_articles["bouteilles"] = 0
+            df_bdc_articles["bouteilles"] = pd.to_numeric(df_bdc_articles["bouteilles"].fillna(0), errors="coerce").fillna(0).astype(int)
+
+            edited_bdc = st.data_editor(
+                df_bdc_articles,
+                num_rows="dynamic",
+                column_config={
+                    "article": st.column_config.TextColumn(label="Article"),
+                    "bouteilles": st.column_config.NumberColumn(label="Nb bouteilles", min_value=0)
+                },
+                use_container_width=True
+            )
+
+            st.subheader("Texte brut (résultat OCR BDC)")
+            st.code(res_bdc["raw"])
+            st.markdown("</div>", unsafe_allow_html=True)
+
+            # Envoi BDC vers sheet spécifique
+            if st.button("📤 Envoyer vers Google Sheets — BDC"):
+                try:
+                    # use gspread service account from st.secrets -> open by BDC_SHEET_ID
+                    if "gcp_sheet" in st.secrets:
+                        sa_info = dict(st.secrets["gcp_sheet"])
+                    elif "google_service_account" in st.secrets:
+                        sa_info = dict(st.secrets["google_service_account"])
+                    else:
+                        raise FileNotFoundError("Credentials Google Sheets introuvables dans st.secrets (ajoute [gcp_sheet])")
+
+                    client = gspread.service_account_from_dict(sa_info)
+                    sh_bdc = client.open_by_key(BDC_SHEET_ID)
+                    ws_bdc = sh_bdc.sheet1
+
+                    existing = ws_bdc.get_all_values()
+                    start_row = len(existing) + 1
+                    today_str = datetime.now().strftime("%d/%m/%Y")
+
+                    # append rows
+                    for _, row in edited_bdc.iterrows():
+                        ws_bdc.append_row([
+                            numero_val or "",
+                            client_val or "",
+                            date_val or today_str,
+                            row.get("article", ""),
+                            int(row.get("bouteilles", 0)),
+                            st.session_state.user_nom
+                        ])
+
+                    end_row = len(ws_bdc.get_all_values())
+
+                    st.success("✅ Données BDC insérées avec succès !")
+                    st.info(f"📌 Lignes insérées dans le sheet BDC : {start_row} → {end_row}")
+
+                    # Optionally color rows on BDC sheet (simple: alternate using scan_index)
+                    try:
+                        # For coloring we need the sheetId (integer). gspread sheet object has .id
+                        sheet_id_bdc = ws_bdc.id
+                        color_rows(BDC_SHEET_ID, sheet_id_bdc, start_row-1, end_row, st.session_state.get("scan_index", 0))
+                    except Exception:
+                        # ignore coloring errors but warn
+                        st.warning("Coloration automatique du BDC sheet a échoué (permission / sheetId).")
+
+                    st.session_state["scan_index"] = st.session_state.get("scan_index", 0) + 1
+
+                except Exception as e:
+                    st.error(f"❌ Erreur envoi BDC Sheets: {e}")
+
+    # Retour au menu
+    if st.button("⬅️ Retour au menu principal"):
+        st.session_state.mode = None
+        try:
+            st.experimental_rerun()
+        except Exception:
+            pass
+
+# ---------------------------
+# Footer + logout
+# ---------------------------
+st.markdown("---")
+if st.button("🚪 Déconnexion"):
+    for k in ["auth", "user_nom", "user_matricule"]:
+        if k in st.session_state:
+            del st.session_state[k]
+    try:
+        st.experimental_rerun()
+    except Exception:
+        pass
+
+# End of file
