@@ -279,26 +279,51 @@ def extract_bon_commande(text):
         return m2.group(1).strip().split()[0]
     return ""
 
+# improved item extractor (robust, for BDC & invoice)
 def extract_items(text):
+    """
+    Retourne une liste de dicts: {"article": str, "quantite": int}
+    Logic:
+     - Parcourt chaque ligne non vide
+     - Cherche le dernier nombre dans la ligne (peut contenir '.' ou ',' comme séparateur)
+     - Nettoie le nombre et convertit en int si possible
+     - Le reste de la ligne devient la description
+    """
     items = []
     lines = [l.strip() for l in text.split("\n") if l.strip()]
-    pattern = re.compile(r"(.+?(?:75\s*cls?|75\s*cl|75cl|75))\s+\d+\s+\d+\s+(\d+)", flags=re.I)
     for l in lines:
-        m = pattern.search(l)
-        if m:
-            name = m.group(1).strip()
-            nb_btls = int(m.group(2))
-            name = re.sub(r"\s{2,}", " ", name)
-            items.append({"article": name, "bouteilles": nb_btls})
-    if not items:
-        for l in lines:
-            if "75" in l or "cls" in l.lower():
-                nums = re.findall(r"(\d{1,4})", l)
-                if nums:
-                    nb_btls = int(nums[-1])
-                    name = re.sub(r"\d+", "", l).strip()
-                    items.append({"article": name, "bouteilles": nb_btls})
-    return items
+        # ignore lines that are clearly headers
+        if re.search(r"(bon|commande|date|adresse|factur|client|total|montant)", l, flags=re.I):
+            continue
+        # find all numbers (with possible thousands separators)
+        nums = re.findall(r"(\d{1,3}(?:[.,]\d{3})*|\d+)", l)
+        if nums:
+            last_num = nums[-1]
+            # normalize number: remove spaces, replace comma by '' if it's thousand sep, else handle decimal
+            n_clean = last_num.replace(" ", "").replace(",", "").replace(".", "")
+            try:
+                q = int(n_clean)
+            except Exception:
+                q = 0
+            # remove the matched numeric substring from line (only the last occurrence)
+            # escape punctuation for regex
+            esc_last = re.escape(last_num)
+            article = re.sub(rf"{esc_last}\s*$", "", l).strip()
+            article = re.sub(r"\s{2,}", " ", article)
+            if article == "":
+                article = l
+            items.append({"article": article, "quantite": q})
+        else:
+            # no number found: maybe a pure description row -> quantity 0
+            items.append({"article": l, "quantite": 0})
+    # Post-process: try to merge nonsense single-word lines etc. (simple heuristic)
+    # Remove duplicates and keep meaningful ones
+    clean_items = []
+    for it in items:
+        if len(it["article"]) < 2 and it["quantite"] == 0:
+            continue
+        clean_items.append(it)
+    return clean_items
 
 def invoice_pipeline(image_bytes: bytes):
     cleaned = preprocess_image(image_bytes)
@@ -315,24 +340,105 @@ def invoice_pipeline(image_bytes: bytes):
     }
 
 # ---------------------------
-# BDC pipeline (séparé pour modifications futures)
+# BDC pipeline (amélioré)
 # ---------------------------
+def extract_bdc_number(text: str) -> str:
+    # Patterns communs: "Bon de commande N° 251033", "Bon de commande: 251033", "N° BDC 251033", "Numéro: 251033"
+    patterns = [
+        r"Bon\s*de\s*commande\s*(?:N[°o]?|numero|numéro)?\s*[:\-]?\s*([0-9A-Za-z\-/]+)",
+        r"BDC\s*(?:N[°o]?|:)?\s*([0-9A-Za-z\-/]+)",
+        r"Num(?:éro|ero)?\s*(?:Bon\s*de\s*commande)?\s*[:\-]?\s*([0-9A-Za-z\-/]+)",
+        r"N[°o]?\s*[:\-]?\s*([0-9]{3,7})"
+    ]
+    for p in patterns:
+        m = re.search(p, text, flags=re.I)
+        if m:
+            return m.group(1).strip()
+    # fallback: any 4-7 digit sequence near start
+    m2 = re.search(r"\b([0-9]{4,7})\b", text)
+    if m2:
+        return m2.group(1)
+    return ""
+
+def extract_bdc_date(text: str) -> str:
+    # Look for dd/mm/yy or dd/mm/yyyy or formats like 04 /11 /25
+    m = re.search(r"(\d{1,2}\s*[\/\-]\s*\d{1,2}\s*[\/\-]\s*\d{2,4})", text)
+    if m:
+        d = re.sub(r"\s+", "", m.group(1))
+        # normalize to dd/mm/yyyy if possible
+        parts = re.split(r"[\/\-]", d)
+        if len(parts) == 3:
+            day = parts[0].zfill(2)
+            mon = parts[1].zfill(2)
+            year = parts[2]
+            if len(year) == 2:
+                year = "20" + year
+            return f"{day}/{mon}/{year}"
+    # fallback: words like "Date d'emission 04/11/25"
+    m2 = re.search(r"Date(?:\s+d['’]emission)?\s*[:\-]?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})", text, flags=re.I)
+    if m2:
+        return m2.group(1)
+    return ""
+
+def extract_bdc_client(text: str) -> str:
+    # Try lines like "Adresse facturation" or "Facturation" or find a capitalized line near top
+    m = re.search(r"Adresse\s*(?:facturation|facture)\s*[:\-]?\s*(.+)", text, flags=re.I)
+    if m:
+        return m.group(1).split("\n")[0].strip()
+    # fallback: look for first non-empty line that looks like a name/company
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
+    if len(lines) >= 2:
+        # pick second line if first contains header words
+        for idx in range(min(6, len(lines))):
+            l = lines[idx]
+            if not re.search(r"(bon|commande|date|adresse|livraison|factur|client|tel|fax)", l, flags=re.I):
+                return l
+    return ""
+
+def extract_bdc_delivery_address(text: str) -> str:
+    # Look for "Adresse livraison" or "Adresse de livraison" or lines that contain LOT / ADRESSE patterns
+    m = re.search(r"Adresse\s*(?:de\s*)?livraison\s*[:\-]?\s*(.+)", text, flags=re.I)
+    if m:
+        return m.group(1).split("\n")[0].strip()
+    # fallback: look for lines with "LOT" or "BP" etc.
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
+    for l in lines:
+        if "LOT" in l.upper() or re.search(r"\bBP\b", l.upper()):
+            return l
+    return ""
+
 def bdc_pipeline(image_bytes: bytes):
+    """
+    pipeline BDC:
+     - preprocess + OCR
+     - extraction numero, client, date, adresse livraison
+     - extraction items via extract_items()
+    """
     cleaned = preprocess_image(image_bytes)
     raw = google_vision_ocr(cleaned)
     raw = clean_text(raw)
 
-    # Champs placeholders — tu pourras ajouter des extracteurs spécifiques
-    numero = ""   # ex: extract_bdc_number(raw)
-    client = ""   # ex: extract_bdc_client(raw)
-    date = ""     # ex: extract_bdc_date(raw)
+    numero = extract_bdc_number(raw)
+    date = extract_bdc_date(raw)
+    client = extract_bdc_client(raw)
+    adresse_liv = extract_bdc_delivery_address(raw)
+    items = extract_items(raw)
+
+    # normalize items to expected keys for UI (article + quantite)
+    normalized = []
+    for it in items:
+        normalized.append({
+            "article": it.get("article", "").strip(),
+            "quantite": int(it.get("quantite", 0))
+        })
 
     return {
         "raw": raw,
         "numero": numero,
         "client": client,
         "date": date,
-        "articles": extract_items(raw)
+        "adresse_livraison": adresse_liv,
+        "articles": normalized
     }
 
 # ---------------------------
@@ -421,7 +527,6 @@ def color_rows(spreadsheet_id, sheet_id, start, end, scan_index):
         spreadsheetId=spreadsheet_id,
         body=body
     ).execute()
-
 
 # ---------------------------
 # Session init
@@ -574,7 +679,7 @@ if st.session_state.mode is None:
 # ---------------------------
 
 # ---------------------------
-# FACTURE mode (existing UI)
+# FACTURE mode (existing UI) - unchanged
 # ---------------------------
 if st.session_state.mode == "facture":
     st.markdown("<div class='card'>", unsafe_allow_html=True)
@@ -630,8 +735,11 @@ if st.session_state.mode == "facture":
         if not detected_articles:
             detected_articles = [{"article": "", "bouteilles": 0}]
         df_articles = pd.DataFrame(detected_articles)
+        # make columns consistent
         if "article" not in df_articles.columns:
             df_articles["article"] = ""
+        if "bouteilles" not in df_articles.columns and "quantite" in df_articles.columns:
+            df_articles = df_articles.rename(columns={"quantite": "bouteilles"})
         if "bouteilles" not in df_articles.columns:
             df_articles["bouteilles"] = 0
         df_articles["bouteilles"] = pd.to_numeric(df_articles["bouteilles"].fillna(0), errors="coerce").fillna(0).astype(int)
@@ -738,7 +846,7 @@ if st.session_state.mode == "facture":
             pass
 
 # ---------------------------
-# BDC mode (Bon de commande)
+# BDC mode (Bon de commande) - REFACTORED & PREMIUM
 # ---------------------------
 if st.session_state.mode == "bdc":
     st.markdown("<div class='card'>", unsafe_allow_html=True)
@@ -772,63 +880,98 @@ if st.session_state.mode == "bdc":
             p.progress(100)
             p.empty()
 
+            # Detection fields (improved)
             st.subheader("Informations détectées (modifiable)")
-            numero_val = st.text_input("🔢 Numéro BDC", value=res_bdc.get("numero", ""))
-            client_val = st.text_input("👤 Client", value=res_bdc.get("client", ""))
-            date_val = st.text_input("📅 Date", value=res_bdc.get("date", ""))
-
+            col1, col2 = st.columns(2)
+            numero_val = col1.text_input("🔢 Numéro BDC", value=res_bdc.get("numero", ""))
+            client_val = col1.text_input("👤 Client / Facturation", value=res_bdc.get("client", ""))
+            date_val = col2.text_input("📅 Date d'émission", value=res_bdc.get("date", datetime.now().strftime("%d/%m/%Y")))
+            adresse_val = col2.text_input("📍 Adresse de livraison", value=res_bdc.get("adresse_livraison", ""))
             st.markdown("</div>", unsafe_allow_html=True)
 
+            # Articles editor (dynamic)
             st.markdown("<div class='card'>", unsafe_allow_html=True)
             st.subheader("Articles détectés (modifiable)")
             df_bdc_articles = pd.DataFrame(res_bdc.get("articles", []))
-            if "article" not in df_bdc_articles.columns:
-                df_bdc_articles["article"] = ""
-            if "bouteilles" not in df_bdc_articles.columns:
-                df_bdc_articles["bouteilles"] = 0
-            df_bdc_articles["bouteilles"] = pd.to_numeric(df_bdc_articles["bouteilles"].fillna(0), errors="coerce").fillna(0).astype(int)
+            # normalize columns to article + quantite
+            if df_bdc_articles.empty:
+                df_bdc_articles = pd.DataFrame([{"article": "", "quantite": 0}])
+            if "article" not in df_bdc_articles.columns and "Article" in df_bdc_articles.columns:
+                df_bdc_articles = df_bdc_articles.rename(columns={"Article": "article"})
+            if "quantite" not in df_bdc_articles.columns:
+                # some extractors use "bouteilles" or "quantite"
+                if "bouteilles" in df_bdc_articles.columns:
+                    df_bdc_articles = df_bdc_articles.rename(columns={"bouteilles": "quantite"})
+                else:
+                    df_bdc_articles["quantite"] = 0
+            df_bdc_articles["quantite"] = pd.to_numeric(df_bdc_articles["quantite"].fillna(0), errors="coerce").fillna(0).astype(int)
 
             edited_bdc = st.data_editor(
                 df_bdc_articles,
                 num_rows="dynamic",
                 column_config={
-                    "article": st.column_config.TextColumn(label="Article"),
-                    "bouteilles": st.column_config.NumberColumn(label="Nb bouteilles", min_value=0)
+                    "article": st.column_config.TextColumn(label="Article / Désignation"),
+                    "quantite": st.column_config.NumberColumn(label="Quantité", min_value=0)
                 },
                 use_container_width=True
             )
+
+            # add new line button (works like invoice)
+            if st.button("➕ Ajouter une ligne BDC"):
+                new_row = pd.DataFrame([{"article": "", "quantite": 0}])
+                edited_bdc = pd.concat([edited_bdc, new_row], ignore_index=True)
+                st.session_state["edited_bdc_df"] = edited_bdc
+                try:
+                    st.experimental_rerun()
+                except Exception:
+                    pass
+
+            st.session_state["edited_bdc_df"] = edited_bdc.copy()
 
             st.subheader("Texte brut (résultat OCR BDC)")
             st.code(res_bdc["raw"])
             st.markdown("</div>", unsafe_allow_html=True)
 
-            # Envoi BDC vers sheet spécifique
+            # Prepare BDC sheet client (separate sheet id)
+            try:
+                if "gcp_sheet" in st.secrets:
+                    sa_info = dict(st.secrets["gcp_sheet"])
+                elif "google_service_account" in st.secrets:
+                    sa_info = dict(st.secrets["google_service_account"])
+                else:
+                    sa_info = None
+                if sa_info:
+                    gclient = gspread.service_account_from_dict(sa_info)
+                    sh_bdc = gclient.open_by_key(BDC_SHEET_ID)
+                    ws_bdc = sh_bdc.sheet1
+                else:
+                    ws_bdc = None
+            except Exception:
+                ws_bdc = None
+
+            # Envoi vers Google Sheets (BDC)
             if st.button("📤 Envoyer vers Google Sheets — BDC"):
                 try:
-                    # use gspread service account from st.secrets -> open by BDC_SHEET_ID
-                    if "gcp_sheet" in st.secrets:
-                        sa_info = dict(st.secrets["gcp_sheet"])
-                    elif "google_service_account" in st.secrets:
-                        sa_info = dict(st.secrets["google_service_account"])
-                    else:
-                        raise FileNotFoundError("Credentials Google Sheets introuvables dans st.secrets (ajoute [gcp_sheet])")
+                    if ws_bdc is None:
+                        raise FileNotFoundError("Credentials Google Sheets / BDC non configuré")
 
-                    client = gspread.service_account_from_dict(sa_info)
-                    sh_bdc = client.open_by_key(BDC_SHEET_ID)
-                    ws_bdc = sh_bdc.sheet1
+                    edited = st.session_state.get("edited_bdc_df", edited_bdc).copy()
+                    # filter empty rows
+                    edited = edited[~((edited["article"].astype(str).str.strip() == "") & (edited["quantite"] == 0))]
+                    edited["quantite"] = pd.to_numeric(edited["quantite"].fillna(0), errors="coerce").fillna(0).astype(int)
 
                     existing = ws_bdc.get_all_values()
                     start_row = len(existing) + 1
                     today_str = datetime.now().strftime("%d/%m/%Y")
 
-                    # append rows
-                    for _, row in edited_bdc.iterrows():
+                    for _, row in edited.iterrows():
                         ws_bdc.append_row([
                             numero_val or "",
                             client_val or "",
                             date_val or today_str,
+                            adresse_val or "",
                             row.get("article", ""),
-                            int(row.get("bouteilles", 0)),
+                            int(row.get("quantite", 0)),
                             st.session_state.user_nom
                         ])
 
@@ -837,13 +980,11 @@ if st.session_state.mode == "bdc":
                     st.success("✅ Données BDC insérées avec succès !")
                     st.info(f"📌 Lignes insérées dans le sheet BDC : {start_row} → {end_row}")
 
-                    # Optionally color rows on BDC sheet (simple: alternate using scan_index)
+                    # try color
                     try:
-                        # For coloring we need the sheetId (integer). gspread sheet object has .id
                         sheet_id_bdc = ws_bdc.id
                         color_rows(BDC_SHEET_ID, sheet_id_bdc, start_row-1, end_row, st.session_state.get("scan_index", 0))
                     except Exception:
-                        # ignore coloring errors but warn
                         st.warning("Coloration automatique du BDC sheet a échoué (permission / sheetId).")
 
                     st.session_state["scan_index"] = st.session_state.get("scan_index", 0) + 1
