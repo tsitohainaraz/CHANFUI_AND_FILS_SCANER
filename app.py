@@ -49,6 +49,7 @@ AUTHORIZED_USERS = {
 # BDC sheet id (distinct)
 # ---------------------------
 BDC_SHEET_ID = "1FooEwQBwLjvyjAsvHu4eDes0o-eEm92fbEWv6maBNyE"
+BDC_SHEET_GID = 1487110894  # sheet gid for the BDC target sheet
 
 # ---------------------------
 # Colors & sheet row colors (2 colors only)
@@ -63,7 +64,6 @@ PALETTE = {
 }
 
 # For Sheets API backgroundColor we need floats [0..1]
-# Petrol #0F3A45 -> (15,58,69) /255
 SHEET_COLOR_THEME = {"red": 15/255.0, "green": 58/255.0, "blue": 69/255.0}
 SHEET_COLOR_DEFAULT = {"red": 1.0, "green": 1.0, "blue": 1.0}
 
@@ -343,7 +343,6 @@ def invoice_pipeline(image_bytes: bytes):
 # BDC pipeline (amélioré)
 # ---------------------------
 def extract_bdc_number(text: str) -> str:
-    # Patterns communs: "Bon de commande N° 251033", "Bon de commande: 251033", "N° BDC 251033", "Numéro: 251033"
     patterns = [
         r"Bon\s*de\s*commande\s*(?:N[°o]?|numero|numéro)?\s*[:\-]?\s*([0-9A-Za-z\-/]+)",
         r"BDC\s*(?:N[°o]?|:)?\s*([0-9A-Za-z\-/]+)",
@@ -354,18 +353,15 @@ def extract_bdc_number(text: str) -> str:
         m = re.search(p, text, flags=re.I)
         if m:
             return m.group(1).strip()
-    # fallback: any 4-7 digit sequence near start
     m2 = re.search(r"\b([0-9]{4,7})\b", text)
     if m2:
         return m2.group(1)
     return ""
 
 def extract_bdc_date(text: str) -> str:
-    # Look for dd/mm/yy or dd/mm/yyyy or formats like 04 /11 /25
     m = re.search(r"(\d{1,2}\s*[\/\-]\s*\d{1,2}\s*[\/\-]\s*\d{2,4})", text)
     if m:
         d = re.sub(r"\s+", "", m.group(1))
-        # normalize to dd/mm/yyyy if possible
         parts = re.split(r"[\/\-]", d)
         if len(parts) == 3:
             day = parts[0].zfill(2)
@@ -374,21 +370,17 @@ def extract_bdc_date(text: str) -> str:
             if len(year) == 2:
                 year = "20" + year
             return f"{day}/{mon}/{year}"
-    # fallback: words like "Date d'emission 04/11/25"
     m2 = re.search(r"Date(?:\s+d['’]emission)?\s*[:\-]?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})", text, flags=re.I)
     if m2:
         return m2.group(1)
     return ""
 
 def extract_bdc_client(text: str) -> str:
-    # Try lines like "Adresse facturation" or "Facturation" or find a capitalized line near top
     m = re.search(r"Adresse\s*(?:facturation|facture)\s*[:\-]?\s*(.+)", text, flags=re.I)
     if m:
         return m.group(1).split("\n")[0].strip()
-    # fallback: look for first non-empty line that looks like a name/company
     lines = [l.strip() for l in text.split("\n") if l.strip()]
     if len(lines) >= 2:
-        # pick second line if first contains header words
         for idx in range(min(6, len(lines))):
             l = lines[idx]
             if not re.search(r"(bon|commande|date|adresse|livraison|factur|client|tel|fax)", l, flags=re.I):
@@ -396,11 +388,9 @@ def extract_bdc_client(text: str) -> str:
     return ""
 
 def extract_bdc_delivery_address(text: str) -> str:
-    # Look for "Adresse livraison" or "Adresse de livraison" or lines that contain LOT / ADRESSE patterns
     m = re.search(r"Adresse\s*(?:de\s*)?livraison\s*[:\-]?\s*(.+)", text, flags=re.I)
     if m:
         return m.group(1).split("\n")[0].strip()
-    # fallback: look for lines with "LOT" or "BP" etc.
     lines = [l.strip() for l in text.split("\n") if l.strip()]
     for l in lines:
         if "LOT" in l.upper() or re.search(r"\bBP\b", l.upper()):
@@ -408,12 +398,6 @@ def extract_bdc_delivery_address(text: str) -> str:
     return ""
 
 def bdc_pipeline(image_bytes: bytes):
-    """
-    pipeline BDC:
-     - preprocess + OCR
-     - extraction numero, client, date, adresse livraison
-     - extraction items via extract_items()
-    """
     cleaned = preprocess_image(image_bytes)
     raw = google_vision_ocr(cleaned)
     raw = clean_text(raw)
@@ -424,7 +408,6 @@ def bdc_pipeline(image_bytes: bytes):
     adresse_liv = extract_bdc_delivery_address(raw)
     items = extract_items(raw)
 
-    # normalize items to expected keys for UI (article + quantite)
     normalized = []
     for it in items:
         normalized.append({
@@ -440,6 +423,186 @@ def bdc_pipeline(image_bytes: bytes):
         "adresse_livraison": adresse_liv,
         "articles": normalized
     }
+
+# ---------------------------
+# NEW: Table extraction from Vision (for BDC structured table with 8 fixed columns)
+# ---------------------------
+def bbox_center(bbox):
+    xs = [v.x for v in bbox.vertices]
+    ys = [v.y for v in bbox.vertices]
+    # some vertices may be None in certain responses - filter
+    xs = [x for x in xs if x is not None]
+    ys = [y for y in ys if y is not None]
+    return (sum(xs) / len(xs), sum(ys) / len(ys))
+
+def cluster_positions(positions, tol=60):
+    if not positions:
+        return []
+    pos = sorted(positions)
+    clusters = [[pos[0]]]
+    for p in pos[1:]:
+        if abs(p - np.mean(clusters[-1])) <= tol:
+            clusters[-1].append(p)
+        else:
+            clusters.append([p])
+    centers = [float(np.mean(c)) for c in clusters]
+    return centers
+
+def extract_table_from_image(image_bytes: bytes, expected_cols, x_tol=60, y_tol=18):
+    """
+    Returns a DataFrame with columns = expected_cols by extracting words + bboxes using
+    Google Vision document_text_detection, grouping into lines, clustering X positions
+    into columns and assembling cells.
+    """
+    client = get_vision_client()
+    image = vision.Image(content=image_bytes)
+    resp = client.document_text_detection(image=image)
+    if resp.error and resp.error.message:
+        raise Exception(f"Google Vision Error: {resp.error.message}")
+
+    words = []
+    # iterate all symbols/words to get bounding boxes and text
+    for page in resp.full_text_annotation.pages:
+        for block in page.blocks:
+            for paragraph in block.paragraphs:
+                for word in paragraph.words:
+                    text = ''.join([s.text for s in word.symbols])
+                    # compute center
+                    cx, cy = bbox_center(word.bounding_box)
+                    ys = [v.y for v in word.bounding_box.vertices if v.y is not None]
+                    miny = min(ys) if ys else cy
+                    maxy = max(ys) if ys else cy
+                    words.append({"text": text, "cx": cx, "cy": cy, "miny": miny, "maxy": maxy})
+
+    if not words:
+        return pd.DataFrame(columns=expected_cols)
+
+    # group by lines using y_tol
+    words_sorted = sorted(words, key=lambda w: w["cy"])
+    lines = []
+    current = [words_sorted[0]]
+    for w in words_sorted[1:]:
+        if abs(w["cy"] - np.mean([c["cy"] for c in current])) <= y_tol:
+            current.append(w)
+        else:
+            lines.append(sorted(current, key=lambda q: q["cx"]))
+            current = [w]
+    lines.append(sorted(current, key=lambda q: q["cx"]))
+
+    # build list of all x centers to detect columns
+    all_x = [w["cx"] for w in words]
+    col_centers = cluster_positions(all_x, tol=x_tol)
+
+    # If cluster count differs from expected, try to adjust tolerance
+    if len(col_centers) < len(expected_cols):
+        col_centers = cluster_positions(all_x, tol=int(x_tol * 0.7))
+    if len(col_centers) > len(expected_cols):
+        # pick the most spread centers by merging nearest until match expected length
+        while len(col_centers) > len(expected_cols):
+            # merge the closest pair
+            dists = [(i, j, abs(col_centers[i] - col_centers[j])) for i in range(len(col_centers)) for j in range(i+1, len(col_centers))]
+            i,j,_ = min(dists, key=lambda x: x[2])
+            merged = (col_centers[i] + col_centers[j]) / 2.0
+            new = [c for k,c in enumerate(col_centers) if k not in (i,j)]
+            new.append(merged)
+            col_centers = sorted(new)
+
+    # For each line, assign words to nearest column center
+    table_rows = []
+    for line in lines:
+        cells = {i: [] for i in range(len(col_centers))}
+        for w in line:
+            dists = [abs(w["cx"] - c) for c in col_centers]
+            idx = int(np.argmin(dists))
+            cells[idx].append((w["cx"], w["text"]))
+        # assemble cell texts ordered by column
+        row = []
+        for i in range(len(col_centers)):
+            if cells[i]:
+                frags = [t for _, t in sorted(cells[i], key=lambda x: x[0])]
+                row.append(" ".join(frags))
+            else:
+                row.append("")
+        table_rows.append(row)
+
+    # Convert to DataFrame
+    df_raw = pd.DataFrame(table_rows)
+
+    # Try to detect header row: find row containing at least 3 expected header keywords
+    header_idx = None
+    for i in range(min(4, len(df_raw))):
+        row_text = " ".join(df_raw.iloc[i].astype(str).values).lower()
+        matches = sum(1 for k in expected_cols if k.lower().replace(".", "").replace(" ", "") in row_text.replace(".", "").replace(" ", ""))
+        if matches >= 2:
+            header_idx = i
+            break
+
+    if header_idx is not None:
+        header = list(df_raw.iloc[header_idx])
+        data = df_raw.iloc[header_idx + 1:].reset_index(drop=True)
+        # Map header positions to expected columns - try to align by fuzzy match
+        mapped_cols = []
+        for h in header:
+            h_norm = str(h).strip().lower()
+            best = None
+            for ex in expected_cols:
+                ex_norm = ex.lower().replace(".", "").replace(" ", "")
+                if ex_norm in h_norm or h_norm in ex_norm:
+                    best = ex
+                    break
+            mapped_cols.append(best or "")
+        # If mapping yields empty, fallback to positional mapping
+        final_cols = []
+        for i, m in enumerate(mapped_cols):
+            if m:
+                final_cols.append(m)
+            else:
+                # use positional expected col if available
+                final_cols.append(expected_cols[i] if i < len(expected_cols) else f"col_{i}")
+        data.columns = final_cols
+        # ensure all expected cols present and in order
+        for ex in expected_cols:
+            if ex not in data.columns:
+                data[ex] = ""
+        data = data[expected_cols]
+    else:
+        # No header found: map columns by position -> expected_cols
+        ncols = df_raw.shape[1]
+        names = []
+        for i in range(ncols):
+            if i < len(expected_cols):
+                names.append(expected_cols[i])
+            else:
+                names.append(f"col_{i}")
+        df_raw.columns = names
+        # ensure all expected exist
+        for ex in expected_cols:
+            if ex not in df_raw.columns:
+                df_raw[ex] = ""
+        data = df_raw[expected_cols]
+
+    # simple cleanup: strip whitespace and normalize number fields
+    def normalize_num(v):
+        s = str(v).strip()
+        if s == "":
+            return ""
+        s2 = s.replace(" ", "").replace(",", "").replace(".", "")
+        if s2.isdigit():
+            return int(s2)
+        return s
+
+    # try to cast Qté, Nb colis, PCB, P.A fact., T.TVA if possible
+    for col in ["Nb colis", "Qté", "PCB", "P.A fact.", "T.TVA"]:
+        if col in data.columns:
+            data[col] = data[col].apply(lambda x: normalize_num(x))
+
+    # strip all text values
+    data = data.applymap(lambda x: (str(x).strip() if not (isinstance(x, int)) else x))
+
+    # remove rows that are fully empty
+    data = data[~(data.apply(lambda r: all([str(c).strip() == "" for c in r]), axis=1))].reset_index(drop=True)
+
+    return data
 
 # ---------------------------
 # Google Sheets helpers (from st.secrets)
@@ -475,22 +638,13 @@ def get_sheets_service():
     return service
 
 def _sheet_text_color_for_bg(color):
-    # color is dict floats; if theme -> white text, if white -> black text
     if color == SHEET_COLOR_THEME:
         return TEXT_COLOR_WHITE
     return TEXT_COLOR_BLACK
 
 def color_rows(spreadsheet_id, sheet_id, start, end, scan_index):
-    """
-    Coloration PAR FACTURE (par opération d’envoi).
-    - Toutes les lignes envoyées en une seule fois = même couleur
-    - Alternance : blanc → bleu pétrole → blanc → bleu pétrole → ...
-    - start / end : index 0-based (end exclus)
-    """
-
     service = get_sheets_service()
 
-    # --- Choix de couleur basé sur l'index du scan ---
     if scan_index % 2 == 0:
         bg = SHEET_COLOR_DEFAULT      # Blanc
         text_color = TEXT_COLOR_BLACK
@@ -498,7 +652,6 @@ def color_rows(spreadsheet_id, sheet_id, start, end, scan_index):
         bg = SHEET_COLOR_THEME        # Bleu pétrole
         text_color = TEXT_COLOR_WHITE
 
-    # --- Construire la requête unique pour colorer tout le bloc ---
     body = {
         "requests": [
             {
@@ -522,7 +675,6 @@ def color_rows(spreadsheet_id, sheet_id, start, end, scan_index):
         ]
     }
 
-    # --- Exécuter la coloration dans Google Sheets ---
     service.spreadsheets().batchUpdate(
         spreadsheetId=spreadsheet_id,
         body=body
@@ -595,7 +747,6 @@ def login_block():
             st.session_state.user_nom = nom.upper()
             st.session_state.user_matricule = mat
 
-            # --- SUCCESS premium petrol ---
             st.markdown(
                 f"""
                 <div style="
@@ -621,7 +772,6 @@ def login_block():
                 pass
 
         else:
-            # --- ERROR premium petrol ---
             st.markdown(
                 """
                 <div style="
@@ -846,7 +996,7 @@ if st.session_state.mode == "facture":
             pass
 
 # ---------------------------
-# BDC mode (Bon de commande) - REFACTORED & PREMIUM
+# BDC mode (Bon de commande) - UPDATED to extract 8-column table automatically
 # ---------------------------
 if st.session_state.mode == "bdc":
     st.markdown("<div class='card'>", unsafe_allow_html=True)
@@ -872,6 +1022,7 @@ if st.session_state.mode == "bdc":
             st.info("Traitement OCR Google Vision (BDC)...")
             p = st.progress(5)
             try:
+                # Keep the existing bdc pipeline for header metadata
                 res_bdc = bdc_pipeline(img_bdc_bytes)
             except Exception as e:
                 st.error(f"Erreur OCR (BDC): {e}")
@@ -880,7 +1031,7 @@ if st.session_state.mode == "bdc":
             p.progress(100)
             p.empty()
 
-            # Detection fields (improved)
+            # Detection fields (improved) - keep exactly as you requested (modifiable)
             st.subheader("Informations détectées (modifiable)")
             col1, col2 = st.columns(2)
             numero_val = col1.text_input("🔢 Numéro BDC", value=res_bdc.get("numero", ""))
@@ -889,36 +1040,68 @@ if st.session_state.mode == "bdc":
             adresse_val = col2.text_input("📍 Adresse de livraison", value=res_bdc.get("adresse_livraison", ""))
             st.markdown("</div>", unsafe_allow_html=True)
 
-            # Articles editor (dynamic)
+            # Articles editor (dynamic) - REPLACED: now 8 columns as requested
             st.markdown("<div class='card'>", unsafe_allow_html=True)
             st.subheader("Articles détectés (modifiable)")
-            df_bdc_articles = pd.DataFrame(res_bdc.get("articles", []))
-            # normalize columns to article + quantite
-            if df_bdc_articles.empty:
-                df_bdc_articles = pd.DataFrame([{"article": "", "quantite": 0}])
-            if "article" not in df_bdc_articles.columns and "Article" in df_bdc_articles.columns:
-                df_bdc_articles = df_bdc_articles.rename(columns={"Article": "article"})
-            if "quantite" not in df_bdc_articles.columns:
-                # some extractors use "bouteilles" or "quantite"
-                if "bouteilles" in df_bdc_articles.columns:
-                    df_bdc_articles = df_bdc_articles.rename(columns={"bouteilles": "quantite"})
-                else:
-                    df_bdc_articles["quantite"] = 0
-            df_bdc_articles["quantite"] = pd.to_numeric(df_bdc_articles["quantite"].fillna(0), errors="coerce").fillna(0).astype(int)
+
+            expected_cols = ["Ref four.", "Code ean", "Désignation", "PCB", "Nb colis", "Qté", "P.A fact.", "T.TVA"]
+
+            # Try automatic extraction of the 8-column table
+            with st.spinner("Extraction automatique du tableau..."):
+                try:
+                    df_bdc_table = extract_table_from_image(img_bdc_bytes, expected_cols, x_tol=60, y_tol=18)
+                except Exception as e:
+                    st.error(f"Erreur extraction tableau automatique: {e}")
+                    df_bdc_table = pd.DataFrame(columns=expected_cols)
+
+            # If extraction yielded empty, provide one blank row
+            if df_bdc_table.empty:
+                df_bdc_table = pd.DataFrame([{c: "" for c in expected_cols}])
+
+            # Ensure column order exactly as expected
+            df_bdc_table = df_bdc_table.reindex(columns=expected_cols, fill_value="")
+
+            # Cast numeric columns for nicer editor
+            for col in ["Nb colis", "Qté", "PCB", "P.A fact.", "T.TVA"]:
+                if col in df_bdc_table.columns:
+                    # empty strings -> keep as ""
+                    df_bdc_table[col] = df_bdc_table[col].replace("", "")
+                    # for integers, keep as numeric where possible
+                    def safe_to_numeric(v):
+                        try:
+                            if v is None or str(v).strip() == "":
+                                return ""
+                            s = str(v).replace(" ", "").replace(",", "").replace(".", "")
+                            if s.isdigit():
+                                return int(s)
+                            # try float
+                            return float(str(v).replace(",", "."))
+                        except Exception:
+                            return str(v)
+                    df_bdc_table[col] = df_bdc_table[col].apply(safe_to_numeric)
+
+            # Use data_editor with explicit column config
+            column_config = {
+                "Ref four.": st.column_config.TextColumn("Ref four."),
+                "Code ean": st.column_config.TextColumn("Code ean"),
+                "Désignation": st.column_config.TextColumn("Désignation"),
+                "PCB": st.column_config.NumberColumn("PCB", min_value=0),
+                "Nb colis": st.column_config.NumberColumn("Nb colis", min_value=0),
+                "Qté": st.column_config.NumberColumn("Qté", min_value=0),
+                "P.A fact.": st.column_config.TextColumn("P.A fact."),
+                "T.TVA": st.column_config.TextColumn("T.TVA")
+            }
 
             edited_bdc = st.data_editor(
-                df_bdc_articles,
+                df_bdc_table,
                 num_rows="dynamic",
-                column_config={
-                    "article": st.column_config.TextColumn(label="Article / Désignation"),
-                    "quantite": st.column_config.NumberColumn(label="Quantité", min_value=0)
-                },
+                column_config=column_config,
                 use_container_width=True
             )
 
-            # add new line button (works like invoice)
+            # add new line button
             if st.button("➕ Ajouter une ligne BDC"):
-                new_row = pd.DataFrame([{"article": "", "quantite": 0}])
+                new_row = pd.DataFrame([{c: "" for c in expected_cols}])
                 edited_bdc = pd.concat([edited_bdc, new_row], ignore_index=True)
                 st.session_state["edited_bdc_df"] = edited_bdc
                 try:
@@ -943,46 +1126,68 @@ if st.session_state.mode == "bdc":
                 if sa_info:
                     gclient = gspread.service_account_from_dict(sa_info)
                     sh_bdc = gclient.open_by_key(BDC_SHEET_ID)
-                    ws_bdc = sh_bdc.sheet1
+                    # get worksheet by GID (sheet id)
+                    try:
+                        ws_bdc = None
+                        for ws_candidate in sh_bdc.worksheets():
+                            if int(ws_candidate.id) == int(BDC_SHEET_GID):
+                                ws_bdc = ws_candidate
+                                break
+                        if ws_bdc is None:
+                            # fallback to sheet1
+                            ws_bdc = sh_bdc.sheet1
+                    except Exception:
+                        ws_bdc = sh_bdc.sheet1
                 else:
                     ws_bdc = None
             except Exception:
                 ws_bdc = None
 
-            # Envoi vers Google Sheets (BDC)
+            # Envoi vers Google Sheets (BDC) -> write expected_cols order
             if st.button("📤 Envoyer vers Google Sheets — BDC"):
                 try:
                     if ws_bdc is None:
                         raise FileNotFoundError("Credentials Google Sheets / BDC non configuré")
 
                     edited = st.session_state.get("edited_bdc_df", edited_bdc).copy()
-                    # filter empty rows
-                    edited = edited[~((edited["article"].astype(str).str.strip() == "") & (edited["quantite"] == 0))]
-                    edited["quantite"] = pd.to_numeric(edited["quantite"].fillna(0), errors="coerce").fillna(0).astype(int)
+                    # normalize: ensure columns present
+                    for c in expected_cols:
+                        if c not in edited.columns:
+                            edited[c] = ""
+                    # filter empty rows (all empty)
+                    def row_non_empty(r):
+                        for c in expected_cols:
+                            if str(r.get(c, "")).strip() != "":
+                                return True
+                        return False
+                    edited = edited[edited.apply(row_non_empty, axis=1)].reset_index(drop=True)
 
+                    # append rows one by one as list in exact order
                     existing = ws_bdc.get_all_values()
                     start_row = len(existing) + 1
                     today_str = datetime.now().strftime("%d/%m/%Y")
 
                     for _, row in edited.iterrows():
-                        ws_bdc.append_row([
+                        row_vals = [row.get(c, "") for c in expected_cols]
+                        # optionally add metadata columns if you want (numero, client, date, adresse, user)
+                        final_row = [
                             numero_val or "",
                             client_val or "",
                             date_val or today_str,
-                            adresse_val or "",
-                            row.get("article", ""),
-                            int(row.get("quantite", 0)),
-                            st.session_state.user_nom
-                        ])
+                            adresse_val or ""
+                        ] + row_vals + [st.session_state.user_nom]
+                        # append: match your sheet structure — here we append whole list
+                        ws_bdc.append_row(final_row)
 
                     end_row = len(ws_bdc.get_all_values())
 
                     st.success("✅ Données BDC insérées avec succès !")
                     st.info(f"📌 Lignes insérées dans le sheet BDC : {start_row} → {end_row}")
 
-                    # try color
+                    # try color - use sheet id
                     try:
                         sheet_id_bdc = ws_bdc.id
+                        # color only the rows we appended; note: we appended n rows, compute indices
                         color_rows(BDC_SHEET_ID, sheet_id_bdc, start_row-1, end_row, st.session_state.get("scan_index", 0))
                     except Exception:
                         st.warning("Coloration automatique du BDC sheet a échoué (permission / sheetId).")
@@ -1014,4 +1219,3 @@ if st.button("🚪 Déconnexion"):
         pass
 
 # End of file
-
