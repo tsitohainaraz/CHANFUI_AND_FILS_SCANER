@@ -1,13 +1,13 @@
-# app.py
-# Chan Foui et Fils — OCR Facture PRO
-# Requirements: streamlit, pillow, numpy, google-cloud-vision, gspread, google-api-python-client, google-auth, pandas
+# app_final.py
+# Chan Foui et Fils — OCR Facture PRO (UI premium, dual mode)
+# Mode Facture et Mode Bon de Commande
 
 import streamlit as st
 import numpy as np
 import re
 import time
 import os
-import base64
+import json
 from datetime import datetime
 from io import BytesIO
 from PIL import Image, ImageFilter, ImageOps
@@ -45,10 +45,12 @@ AUTHORIZED_USERS = {
 }
 
 # ---------------------------
-# BDC sheet id (distinct)
+# Sheet IDs
 # ---------------------------
 BDC_SHEET_ID = "1FooEwQBwLjvyjAsvHu4eDes0o-eEm92fbEWv6maBNyE"
 BDC_SHEET_GID = 1487110894
+INVOICE_SHEET_ID = "1FooEwQBwLjvyjAsvHu4eDes0o-eEm92fbEWv6maBNyE"
+INVOICE_SHEET_GID = 72936741
 
 # ---------------------------
 # Colors & styles
@@ -59,9 +61,21 @@ PALETTE = {
     "ivory": "#FAF5EA",
     "muted": "#7a8a8f",
     "card": "#ffffff",
-    "soft": "#f6f2ec"
+    "soft": "#f6f2ec",
+    "success": "#28a745",
+    "warning": "#ffc107",
+    "danger": "#dc3545"
 }
 
+COLORS = [
+    {"red": 0.07, "green": 0.06, "blue": 0.06},
+    {"red": 0.83, "green": 0.72, "blue": 0.45},
+    {"red": 0.88, "green": 0.84, "blue": 0.78},
+]
+
+# ---------------------------
+# Premium Styles
+# ---------------------------
 st.markdown(
     f"""
     <style>
@@ -72,26 +86,237 @@ st.markdown(
         --muted: {PALETTE['muted']};
         --card: {PALETTE['card']};
         --soft: {PALETTE['soft']};
+        --success: {PALETTE['success']};
+        --warning: {PALETTE['warning']};
+        --danger: {PALETTE['danger']};
     }}
+    
     html, body, [data-testid='stAppViewContainer'] {{
         background: linear-gradient(180deg, var(--ivory), #fffdf9);
         color: var(--petrol);
         font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
     }}
-    .card {{
-        border-radius:14px;
-        background: var(--card);
-        padding:18px;
-        box-shadow: 0 10px 30px rgba(15,58,69,0.04);
-        border: 1px solid rgba(15,58,69,0.03);
-        margin-bottom:14px;
+    
+    /* Header Centered */
+    .header-container {{
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        text-align: center;
+        padding: 1rem 0;
+        margin-bottom: 1.5rem;
     }}
-    .stButton>button {{
-        background: linear-gradient(180deg, var(--gold), #b58f2d);
+    
+    .brand-title {{
+        font-family: Georgia, serif;
+        font-size: 2.2rem;
+        font-weight: 700;
+        color: var(--petrol);
+        margin: 0;
+        letter-spacing: -0.5px;
+    }}
+    
+    .brand-sub {{
+        color: var(--muted);
+        font-size: 0.9rem;
+        margin-top: 0.25rem;
+        font-weight: 400;
+    }}
+    
+    /* Mode Selector */
+    .mode-selector {{
+        display: flex;
+        justify-content: center;
+        gap: 1rem;
+        margin: 2rem 0;
+    }}
+    
+    .mode-card {{
+        background: var(--card);
+        border-radius: 16px;
+        padding: 2rem;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        border: 2px solid transparent;
+        box-shadow: 0 8px 25px rgba(15, 58, 69, 0.08);
+        min-width: 200px;
+    }}
+    
+    .mode-card:hover {{
+        transform: translateY(-5px);
+        border-color: var(--gold);
+        box-shadow: 0 12px 35px rgba(15, 58, 69, 0.15);
+    }}
+    
+    .mode-card.active {{
+        border-color: var(--gold);
+        background: linear-gradient(135deg, rgba(212, 175, 55, 0.05), rgba(15, 58, 69, 0.03));
+    }}
+    
+    .mode-icon {{
+        font-size: 2.5rem;
+        margin-bottom: 1rem;
+        color: var(--petrol);
+    }}
+    
+    .mode-title {{
+        font-weight: 600;
+        color: var(--petrol);
+        margin-bottom: 0.5rem;
+    }}
+    
+    .mode-desc {{
+        color: var(--muted);
+        font-size: 0.85rem;
+    }}
+    
+    /* Cards */
+    .premium-card {{
+        border-radius: 18px;
+        background: var(--card);
+        padding: 2rem;
+        box-shadow: 0 15px 40px rgba(15, 58, 69, 0.08);
+        border: 1px solid rgba(15, 58, 69, 0.05);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        margin-bottom: 1.5rem;
+    }}
+    
+    .premium-card:hover {{
+        transform: translateY(-5px);
+        box-shadow: 0 20px 50px rgba(15, 58, 69, 0.12);
+    }}
+    
+    .card-title {{
+        color: var(--petrol);
+        font-weight: 600;
+        margin-bottom: 1.5rem;
+        font-size: 1.4rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }}
+    
+    /* Buttons */
+    .stButton > button {{
+        background: linear-gradient(135deg, var(--gold), #b58f2d);
         color: #081214;
-        font-weight:700;
-        border-radius:10px;
-        padding:8px 12px;
+        font-weight: 700;
+        border-radius: 12px;
+        padding: 0.75rem 1.5rem;
+        border: none;
+        box-shadow: 0 6px 20px rgba(212, 175, 55, 0.25);
+        transition: all 0.3s ease;
+        font-size: 0.95rem;
+    }}
+    
+    .stButton > button:hover {{
+        transform: translateY(-2px);
+        box-shadow: 0 10px 25px rgba(212, 175, 55, 0.35);
+    }}
+    
+    .btn-secondary {{
+        background: linear-gradient(135deg, var(--soft), #e8e2d8) !important;
+        color: var(--petrol) !important;
+        box-shadow: 0 4px 15px rgba(15, 58, 69, 0.1) !important;
+    }}
+    
+    .btn-success {{
+        background: linear-gradient(135deg, var(--success), #218838) !important;
+        color: white !important;
+    }}
+    
+    /* Status Badges */
+    .status-badge {{
+        display: inline-flex;
+        align-items: center;
+        padding: 0.25rem 0.75rem;
+        border-radius: 20px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        margin-left: 0.5rem;
+    }}
+    
+    .status-active {{
+        background: rgba(40, 167, 69, 0.1);
+        color: var(--success);
+    }}
+    
+    .status-inactive {{
+        background: rgba(108, 117, 125, 0.1);
+        color: #6c757d;
+    }}
+    
+    /* Progress Bars */
+    .stProgress > div > div > div > div {{
+        background: linear-gradient(90deg, var(--gold), #b58f2d);
+    }}
+    
+    /* Data Editor */
+    [data-testid="stDataFrame"] {{
+        border-radius: 12px;
+        overflow: hidden;
+        border: 1px solid rgba(15, 58, 69, 0.1);
+    }}
+    
+    /* Footer */
+    .footer {{
+        text-align: center;
+        color: var(--muted);
+        font-size: 0.8rem;
+        padding: 1.5rem;
+        margin-top: 3rem;
+        border-top: 1px solid rgba(15, 58, 69, 0.1);
+    }}
+    
+    /* File Upload */
+    [data-testid="stFileUploader"] {{
+        border: 2px dashed rgba(15, 58, 69, 0.2);
+        border-radius: 12px;
+        padding: 2rem;
+        background: rgba(15, 58, 69, 0.02);
+    }}
+    
+    /* Responsive */
+    @media (max-width: 768px) {{
+        .mode-selector {{
+            flex-direction: column;
+            align-items: center;
+        }}
+        
+        .mode-card {{
+            width: 100%;
+            max-width: 300px;
+        }}
+        
+        .brand-title {{
+            font-size: 1.8rem;
+        }}
+    }}
+    
+    /* Animations */
+    @keyframes fadeIn {{
+        from {{ opacity: 0; transform: translateY(10px); }}
+        to {{ opacity: 1; transform: translateY(0); }}
+    }}
+    
+    .fade-in {{
+        animation: fadeIn 0.5s ease-out;
+    }}
+    
+    @keyframes shimmer {{
+        0% {{ background-position: -200% 0; }}
+        100% {{ background-position: 200% 0; }}
+    }}
+    
+    .shimmer {{
+        background: linear-gradient(90deg, 
+            rgba(212, 175, 55, 0.05), 
+            rgba(15, 58, 69, 0.03), 
+            rgba(212, 175, 55, 0.05));
+        background-size: 200% 100%;
+        animation: shimmer 3s linear infinite;
     }}
     </style>
     """,
@@ -143,10 +368,116 @@ def clean_text(text: str) -> str:
     return text.strip()
 
 # ---------------------------
-# Extraction Functions for BDC
+# Facture Extraction Functions
+# ---------------------------
+def extract_invoice_number(text: str) -> str:
+    patterns = [
+        r"FACTURE\s+EN\s+COMPTE.*?N[°o]?\s*([0-9]{3,})",
+        r"FACTURE.*?N[°o]\s*([0-9]{3,})",
+        r"FACTURE.*?N\s*([0-9]{3,})",
+        r"N°\s*([0-9]{3,})"
+    ]
+    for p in patterns:
+        m = re.search(p, text, flags=re.I)
+        if m:
+            return m.group(1).strip()
+    return ""
+
+def extract_delivery_address(text: str) -> str:
+    patterns = [
+        r"Adresse de livraison\s*[:\-]\s*(.+)",
+        r"Adresse(?:\s+de\s+livraison)?\s*[:\-]?\s*\n?\s*(.+)"
+    ]
+    for p in patterns:
+        m = re.search(p, text, flags=re.I)
+        if m:
+            address = m.group(1).strip().rstrip(".")
+            return address.split("\n")[0] if "\n" in address else address
+    return ""
+
+def extract_doit(text: str) -> str:
+    p = r"\bDOIT\s*[:\-]?\s*([A-Z0-9]{2,6})"
+    m = re.search(p, text, flags=re.I)
+    if m:
+        return m.group(1).strip()
+    candidates = ["S2M", "ULYS", "DLP"]
+    for c in candidates:
+        if c in text:
+            return c
+    return ""
+
+def extract_month(text: str) -> str:
+    months = {
+        "janvier": "Janvier", "février": "Février", "fevrier": "Février",
+        "mars": "Mars", "avril": "Avril", "mai": "Mai",
+        "juin": "Juin", "juillet": "Juillet", "août": "Août",
+        "aout": "Août", "septembre": "Septembre", "octobre": "Octobre",
+        "novembre": "Novembre", "décembre": "Décembre", "decembre": "Décembre"
+    }
+    for mname in months:
+        if re.search(r"\b" + re.escape(mname) + r"\b", text, flags=re.I):
+            return months[mname]
+    return ""
+
+def extract_bon_commande(text: str) -> str:
+    patterns = [
+        r"Suivant votre bon de commande\s*[:\-]?\s*([0-9A-Za-z\-\/]+)",
+        r"bon de commande\s*[:\-]?\s*(.+)"
+    ]
+    for p in patterns:
+        m = re.search(p, text, flags=re.I)
+        if m:
+            return m.group(1).strip().split()[0]
+    return ""
+
+def extract_invoice_items(text: str):
+    items = []
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
+    
+    # Pattern pour détecter les articles de facture
+    pattern = re.compile(r"(.+?(?:75\s*cls?|75\s*cl|75cl|75))\s+\d+\s+\d+\s+(\d+)", flags=re.I)
+    
+    for line in lines:
+        m = pattern.search(line)
+        if m:
+            name = m.group(1).strip()
+            nb_btls = int(m.group(2))
+            name = re.sub(r"\s{2,}", " ", name)
+            items.append({"article": name, "bouteilles": nb_btls})
+    
+    # Fallback pattern
+    if not items:
+        for line in lines:
+            if "75" in line or "cls" in line.lower():
+                nums = re.findall(r"(\d{1,4})", line)
+                if nums:
+                    nb_btls = int(nums[-1])
+                    name = re.sub(r"\d+", "", line).strip()
+                    if name:
+                        items.append({"article": name, "bouteilles": nb_btls})
+    
+    return items
+
+def invoice_pipeline(image_bytes: bytes):
+    """Pipeline complet pour traiter une facture"""
+    cleaned = preprocess_image(image_bytes)
+    raw = google_vision_ocr(cleaned)
+    raw = clean_text(raw)
+    
+    return {
+        "raw": raw,
+        "facture": extract_invoice_number(raw),
+        "adresse": extract_delivery_address(raw),
+        "doit": extract_doit(raw),
+        "mois": extract_month(raw),
+        "bon_commande": extract_bon_commande(raw),
+        "articles": extract_invoice_items(raw)
+    }
+
+# ---------------------------
+# BDC Extraction Functions
 # ---------------------------
 def extract_bdc_number(text: str) -> str:
-    """Extrait le numéro de bon de commande"""
     patterns = [
         r"Bon\s*de\s*commande\s*n[°o]?\s*([0-9]{7,8})",
         r"BDC\s*n[°o]?\s*([0-9]{7,8})",
@@ -156,15 +487,12 @@ def extract_bdc_number(text: str) -> str:
         m = re.search(p, text, flags=re.I)
         if m:
             return m.group(1).strip()
-    # Chercher directement dans le texte
     m = re.search(r"\b(25011956|25011955)\b", text)
     if m:
         return m.group(1)
-    return "25011956"  # Valeur par défaut basée sur votre exemple
+    return "25011956"
 
 def extract_bdc_date(text: str) -> str:
-    """Extrait la date d'émission"""
-    # Chercher pattern "date émission" suivi de date
     m = re.search(r"date\s*émission\s*(\d{1,2}\s*[/\-]\s*\d{1,2}\s*[/\-]\s*\d{2,4})", text, flags=re.I)
     if m:
         date_str = re.sub(r"\s+", "", m.group(1))
@@ -175,7 +503,6 @@ def extract_bdc_date(text: str) -> str:
             year = parts[2] if len(parts[2]) == 4 else "20" + parts[2]
             return f"{day}/{mon}/{year}"
     
-    # Chercher date dans le contexte "04/11/2025"
     m = re.search(r"\b(\d{1,2}\s*[/\-]\s*\d{1,2}\s*[/\-]\s*2025)\b", text)
     if m:
         date_str = re.sub(r"\s+", "", m.group(1))
@@ -184,13 +511,10 @@ def extract_bdc_date(text: str) -> str:
     return datetime.now().strftime("%d/%m/%Y")
 
 def extract_bdc_client(text: str) -> str:
-    """Extrait le client/facturation"""
-    # Chercher "Adresse facturation" suivi du texte
     m = re.search(r"Adresse\s*facturation\s*(S2M|SZM|2M)", text, flags=re.I)
     if m:
         return m.group(1).strip()
     
-    # Chercher S2M dans le texte
     m = re.search(r"\b(S2M|SZM|2M)\b", text)
     if m:
         return m.group(1)
@@ -198,12 +522,9 @@ def extract_bdc_client(text: str) -> str:
     return "S2M"
 
 def extract_bdc_delivery_address(text: str) -> str:
-    """Extrait l'adresse de livraison"""
-    # Chercher "Adresse livraison" suivi du texte
     lines = text.split('\n')
     for i, line in enumerate(lines):
         if "adresse livraison" in line.lower():
-            # Prendre les 2-3 lignes suivantes
             address_lines = []
             for j in range(1, 4):
                 if i + j < len(lines) and lines[i + j].strip():
@@ -211,7 +532,6 @@ def extract_bdc_delivery_address(text: str) -> str:
             if address_lines:
                 return " ".join(address_lines[:2])
     
-    # Chercher SCORE TALATAMATY
     m = re.search(r"(SCORE\s*TALATAMATY|SCORE\s*TALATAJATY)", text, flags=re.I)
     if m:
         return m.group(1)
@@ -219,42 +539,30 @@ def extract_bdc_delivery_address(text: str) -> str:
     return "SCORE TALATAMATY"
 
 def extract_designation_qte_from_ocr(text: str):
-    """
-    Extrait Désignation et Qté du texte OCR fragmenté
-    Basé sur votre exemple OCR réel
-    """
     items = []
     lines = [l.strip() for l in text.split('\n') if l.strip()]
     
     # Chercher la table dans le texte OCR
     table_start = -1
     for i, line in enumerate(lines):
-        # Détecter le début de la table (en-tête ou première ligne de données)
         if any(keyword in line.lower() for keyword in ["désignation", "designation", "qte", "qté"]) or \
            (re.search(r"000133[0-9]{3}", line) and any(w in line.lower() for w in ["vin", "cote", "blanc", "rouge"])):
             table_start = i
             break
     
-    # Si on a trouvé le début de la table
     if table_start != -1:
         current_designation = ""
-        for i in range(table_start, min(table_start + 20, len(lines))):  # Limiter la recherche
+        for i in range(table_start, min(table_start + 20, len(lines))):
             line = lines[i]
             
-            # Chercher des lignes avec désignation
             if any(keyword in line.lower() for keyword in ["vin de madagascar", "cote de flanar", "coteaux ambalavao", "75 cl", "75 d"]):
-                # C'est une désignation
                 current_designation = line
                 
-                # Chercher la quantité dans cette ligne ou les suivantes
                 qte_found = ""
-                
-                # Chercher dans la ligne actuelle
                 qte_match = re.search(r"(\d+)[.,](\d{3})", line)
                 if qte_match:
                     qte_found = qte_match.group(1) + "." + qte_match.group(2)
                 else:
-                    # Chercher dans les 3 lignes suivantes
                     for j in range(1, 4):
                         if i + j < len(lines):
                             next_line = lines[i + j]
@@ -264,10 +572,9 @@ def extract_designation_qte_from_ocr(text: str):
                                 break
                 
                 if current_designation and qte_found:
-                    # Nettoyer la désignation
-                    clean_desig = re.sub(r"\d{6,}\s*", "", current_designation)  # Enlever codes
+                    clean_desig = re.sub(r"\d{6,}\s*", "", current_designation)
                     clean_desig = re.sub(r"\s{2,}", " ", clean_desig).strip()
-                    clean_desig = re.sub(r"^\d+\s*", "", clean_desig)  # Enlever chiffres au début
+                    clean_desig = re.sub(r"^\d+\s*", "", clean_desig)
                     
                     if clean_desig and len(clean_desig) > 10:
                         items.append({
@@ -276,9 +583,7 @@ def extract_designation_qte_from_ocr(text: str):
                         })
                     current_designation = ""
     
-    # Si pas trouvé par la méthode structurée, chercher par patterns
     if not items:
-        # Patterns spécifiques pour vos articles
         patterns = [
             (r"vin de madagascar.*?75.*?(?:cl|d).*?blanc.*?(\d+[.,]\d{3})", "vin de madagascar 75 cl blanc"),
             (r"cote de flanar.*?rouge.*?75.*?(?:cl|d).*?(\d+[.,]\d{3})", "cote de flanar rouge 75 cl"),
@@ -294,7 +599,6 @@ def extract_designation_qte_from_ocr(text: str):
                     "Qté": qte
                 })
     
-    # Si toujours rien, utiliser les valeurs par défaut de votre exemple
     if not items:
         items = [
             {"Désignation": "vin de madagascar 75 cl blanc", "Qté": "12.000"},
@@ -310,46 +614,17 @@ def bdc_pipeline(image_bytes: bytes):
     raw = google_vision_ocr(cleaned)
     raw = clean_text(raw)
     
-    # Extraire les informations
-    numero = extract_bdc_number(raw)
-    date = extract_bdc_date(raw)
-    client = extract_bdc_client(raw)
-    adresse_liv = extract_bdc_delivery_address(raw)
-    
-    # Extraire les articles
-    items = extract_designation_qte_from_ocr(raw)
-    
     return {
         "raw": raw,
-        "numero": numero,
-        "client": client,
-        "date": date,
-        "adresse_livraison": adresse_liv,
-        "articles": items
+        "numero": extract_bdc_number(raw),
+        "client": extract_bdc_client(raw),
+        "date": extract_bdc_date(raw),
+        "adresse_livraison": extract_bdc_delivery_address(raw),
+        "articles": extract_designation_qte_from_ocr(raw)
     }
 
 # ---------------------------
-# FACTURE Pipeline (simplifié)
-# ---------------------------
-def extract_invoice_info(text: str):
-    """Extrait les informations de facture"""
-    return {
-        "facture": "",
-        "adresse": "",
-        "doit": "",
-        "mois": "",
-        "bon_commande": "",
-        "articles": []
-    }
-
-def invoice_pipeline(image_bytes: bytes):
-    cleaned = preprocess_image(image_bytes)
-    raw = google_vision_ocr(cleaned)
-    raw = clean_text(raw)
-    return extract_invoice_info(raw)
-
-# ---------------------------
-# Google Sheets Functions (MIS À JOUR)
+# Google Sheets Functions
 # ---------------------------
 def get_bdc_worksheet():
     """Obtient la feuille BDC"""
@@ -364,113 +639,138 @@ def get_bdc_worksheet():
         client = gspread.service_account_from_dict(sa_info)
         sh = client.open_by_key(BDC_SHEET_ID)
         
-        # Essayer de trouver la feuille par GID
         for ws in sh.worksheets():
             if int(ws.id) == BDC_SHEET_GID:
                 return ws
         
-        # Fallback à la première feuille
         return sh.sheet1
-    except Exception as e:
-        st.error(f"Erreur de connexion Google Sheets: {str(e)}")
+    except Exception:
         return None
 
-def is_duplicate_entry(ws, numero_bdc, client_nom, date_bdc, designation, qte):
-    """
-    Vérifie si une entrée similaire existe déjà dans la feuille
-    pour éviter les doublons
-    """
+def get_invoice_worksheet():
+    """Obtient la feuille Facture"""
+    if "gcp_sheet" in st.secrets:
+        sa_info = dict(st.secrets["gcp_sheet"])
+    elif "google_service_account" in st.secrets:
+        sa_info = dict(st.secrets["google_service_account"])
+    else:
+        return None
+    
     try:
-        # Récupérer toutes les données existantes
+        client = gspread.service_account_from_dict(sa_info)
+        sh = client.open_by_key(INVOICE_SHEET_ID)
+        
+        for ws in sh.worksheets():
+            if int(ws.id) == INVOICE_SHEET_GID:
+                return ws
+        
+        return sh.sheet1
+    except Exception:
+        return None
+
+def is_duplicate_invoice(ws, invoice_data):
+    """Vérifie si une facture similaire existe déjà"""
+    try:
         all_values = ws.get_all_values()
         
         if not all_values:
             return False
             
-        # Vérifier chaque ligne existante
         for row in all_values:
-            # Vérifier les critères principaux pour identifier un doublon
-            if len(row) >= 6:
-                existing_numero = row[0] if len(row) > 0 else ""
-                existing_client = row[1] if len(row) > 1 else ""
-                existing_date = row[2] if len(row) > 2 else ""
-                existing_designation = row[4] if len(row) > 4 else ""
-                existing_qte = row[5] if len(row) > 5 else ""
+            if len(row) >= 5:
+                existing_invoice = row[0] if len(row) > 0 else ""
+                existing_bdc = row[3] if len(row) > 3 else ""
                 
-                # Comparer les valeurs (avec une certaine tolérance)
-                if (existing_numero == str(numero_bdc) and
-                    existing_client == str(client_nom) and
-                    existing_date == str(date_bdc) and
-                    existing_designation.strip().lower() == str(designation).strip().lower() and
-                    abs(float(existing_qte) - float(qte)) < 0.001):
+                if (existing_invoice == invoice_data["facture"] and 
+                    existing_bdc == invoice_data["bon_commande"]):
                     return True
                     
         return False
-    except Exception as e:
-        st.warning(f"Erreur lors de la vérification des doublons: {str(e)}")
+    except Exception:
         return False
 
-def save_to_sheets_without_duplicates(ws, data_to_save):
-    """
-    Enregistre les données dans Google Sheets en évitant les doublons
-    """
+def is_duplicate_bdc(ws, bdc_data):
+    """Vérifie si un BDC similaire existe déjà"""
     try:
-        # Récupérer les données existantes
         all_values = ws.get_all_values()
-        existing_data = []
         
-        if all_values:
-            # Convertir en format similaire pour comparaison
-            for row in all_values:
-                if len(row) >= 6:
-                    existing_data.append({
-                        'numero': row[0] if len(row) > 0 else "",
-                        'client': row[1] if len(row) > 1 else "",
-                        'date': row[2] if len(row) > 2 else "",
-                        'adresse': row[3] if len(row) > 3 else "",
-                        'designation': row[4] if len(row) > 4 else "",
-                        'qte': row[5] if len(row) > 5 else ""
-                    })
-        
-        # Filtrer les nouvelles données pour enlever les doublons
-        new_data_filtered = []
-        duplicates_found = 0
-        
-        for data in data_to_save:
-            is_duplicate = False
+        if not all_values:
+            return False
             
-            # Vérifier dans les données existantes
-            for existing in existing_data:
-                if (existing['numero'] == data[0] and
-                    existing['client'] == data[1] and
-                    existing['date'] == data[2] and
-                    existing['designation'].strip().lower() == data[4].strip().lower() and
-                    abs(float(existing['qte']) - float(data[5])) < 0.001):
-                    is_duplicate = True
-                    duplicates_found += 1
-                    break
-            
-            # Vérifier aussi dans les nouvelles données déjà ajoutées
-            if not is_duplicate:
-                for new in new_data_filtered:
-                    if (new[0] == data[0] and
-                        new[1] == data[1] and
-                        new[2] == data[2] and
-                        new[4].strip().lower() == data[4].strip().lower() and
-                        abs(float(new[5]) - float(data[5])) < 0.001):
-                        is_duplicate = True
-                        duplicates_found += 1
-                        break
-            
-            if not is_duplicate:
-                new_data_filtered.append(data)
+        for row in all_values:
+            if len(row) >= 5:
+                existing_bdc = row[0] if len(row) > 0 else ""
+                existing_client = row[1] if len(row) > 1 else ""
+                
+                if (existing_bdc == bdc_data["numero"] and 
+                    existing_client == bdc_data["client"]):
+                    return True
+                    
+        return False
+    except Exception:
+        return False
+
+def save_invoice_without_duplicates(ws, invoice_data):
+    """Enregistre une facture sans doublons"""
+    try:
+        # Vérifier si doublon
+        if is_duplicate_invoice(ws, invoice_data):
+            return 0, 1  # 0 ajouté, 1 doublon
         
-        # Ajouter seulement les nouvelles données uniques
-        if new_data_filtered:
-            ws.append_rows(new_data_filtered)
-            
-        return len(new_data_filtered), duplicates_found
+        # Préparer les données
+        today_str = datetime.now().strftime("%d/%m/%Y")
+        timestamp = datetime.now().strftime("%d/%m/%Y %H:%M")
         
+        rows_to_add = []
+        for item in invoice_data["articles"]:
+            rows_to_add.append([
+                invoice_data["facture"],
+                invoice_data["doit"],
+                today_str,
+                invoice_data["bon_commande"],
+                invoice_data["adresse"],
+                item["article"],
+                item["bouteilles"],
+                timestamp,
+                st.session_state.user_nom
+            ])
+        
+        if rows_to_add:
+            ws.append_rows(rows_to_add)
+            return len(rows_to_add), 0
+        
+        return 0, 0
+    except Exception as e:
+        raise Exception(f"Erreur lors de l'enregistrement: {str(e)}")
+
+def save_bdc_without_duplicates(ws, bdc_data):
+    """Enregistre un BDC sans doublons"""
+    try:
+        # Vérifier si doublon
+        if is_duplicate_bdc(ws, bdc_data):
+            return 0, 1  # 0 ajouté, 1 doublon
+        
+        # Préparer les données
+        timestamp = datetime.now().strftime("%d/%m/%Y %H:%M")
+        
+        rows_to_add = []
+        for item in bdc_data["articles"]:
+            rows_to_add.append([
+                bdc_data["numero"],
+                bdc_data["client"],
+                bdc_data["date"],
+                bdc_data["adresse_livraison"],
+                item["Désignation"],
+                item["Qté"],
+                timestamp,
+                st.session_state.user_nom
+            ])
+        
+        if rows_to_add:
+            ws.append_rows(rows_to_add)
+            return len(rows_to_add), 0
+        
+        return 0, 0
     except Exception as e:
         raise Exception(f"Erreur lors de l'enregistrement: {str(e)}")
 
@@ -483,30 +783,37 @@ if "user_nom" not in st.session_state:
     st.session_state.user_nom = ""
 if "mode" not in st.session_state:
     st.session_state.mode = None
-if "scan_index" not in st.session_state:
-    st.session_state.scan_index = 0
-if "last_uploaded_file" not in st.session_state:
-    st.session_state.last_uploaded_file = None
-if "last_saved_data" not in st.session_state:
-    st.session_state.last_saved_data = None
+if "invoice_scans" not in st.session_state:
+    st.session_state.invoice_scans = 0
+if "bdc_scans" not in st.session_state:
+    st.session_state.bdc_scans = 0
+if "current_file_hash" not in st.session_state:
+    st.session_state.current_file_hash = None
 
 # ---------------------------
 # Header
 # ---------------------------
-st.markdown(f"<h1 style='text-align:center;color:{PALETTE['petrol']}'>{BRAND_TITLE}</h1>", unsafe_allow_html=True)
-st.markdown(f"<p style='text-align:center;color:{PALETTE['muted']}'>{BRAND_SUB}</p>", unsafe_allow_html=True)
+st.markdown(f"""
+    <div class="header-container">
+        <h1 class="brand-title">{BRAND_TITLE}</h1>
+        <div class="brand-sub">{BRAND_SUB}</div>
+    </div>
+""", unsafe_allow_html=True)
 
 # ---------------------------
 # Authentication
 # ---------------------------
 if not st.session_state.auth:
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("<h3 style='text-align:center'>🔐 Connexion</h3>", unsafe_allow_html=True)
+    st.markdown('<div class="premium-card">', unsafe_allow_html=True)
+    st.markdown('<div class="card-title">🔐 Connexion</div>', unsafe_allow_html=True)
     
-    nom = st.text_input("Nom (ex: DIRECTION)")
-    mat = st.text_input("Matricule", type="password")
+    col1, col2 = st.columns(2)
+    with col1:
+        nom = st.text_input("Nom (ex: DIRECTION)")
+    with col2:
+        mat = st.text_input("Matricule", type="password")
     
-    if st.button("Se connecter"):
+    if st.button("Se connecter", use_container_width=True):
         if nom and nom.upper() in AUTHORIZED_USERS and AUTHORIZED_USERS[nom.upper()] == mat:
             st.session_state.auth = True
             st.session_state.user_nom = nom.upper()
@@ -514,52 +821,279 @@ if not st.session_state.auth:
         else:
             st.error("❌ Nom ou matricule invalide")
     
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
 # ---------------------------
 # Mode Selection
 # ---------------------------
 if st.session_state.mode is None:
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("<h3 style='text-align:center'>📌 Choisissez un mode de scan</h3>", unsafe_allow_html=True)
+    st.markdown('<div class="premium-card">', unsafe_allow_html=True)
+    st.markdown('<div class="card-title">📌 Sélectionnez le mode</div>', unsafe_allow_html=True)
+    
+    st.markdown('<div class="mode-selector">', unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("📄 Scanner Facture", use_container_width=True):
+        st.markdown("""
+            <div class="mode-card" onclick="document.getElementById('mode_facture').click()">
+                <div class="mode-icon">📄</div>
+                <div class="mode-title">Scanner Facture</div>
+                <div class="mode-desc">Extraction et enregistrement des factures</div>
+            </div>
+        """, unsafe_allow_html=True)
+        if st.button("📄 Mode Facture", key="mode_facture", use_container_width=True):
             st.session_state.mode = "facture"
             st.rerun()
     
     with col2:
-        if st.button("📝 Scanner BDC", use_container_width=True):
+        st.markdown("""
+            <div class="mode-card" onclick="document.getElementById('mode_bdc').click()">
+                <div class="mode-icon">📝</div>
+                <div class="mode-title">Scanner BDC</div>
+                <div class="mode-desc">Extraction et enregistrement des bons de commande</div>
+            </div>
+        """, unsafe_allow_html=True)
+        if st.button("📝 Mode BDC", key="mode_bdc", use_container_width=True):
             st.session_state.mode = "bdc"
             st.rerun()
     
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
     
-    if st.button("🚪 Déconnexion"):
+    # Stats
+    st.markdown("---")
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("📄 Factures scannées", st.session_state.invoice_scans)
+    with col2:
+        st.metric("📝 BDC scannés", st.session_state.bdc_scans)
+    
+    if st.button("🚪 Déconnexion", use_container_width=True, type="secondary"):
         st.session_state.auth = False
         st.session_state.user_nom = ""
         st.rerun()
     
+    st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
 # ---------------------------
-# BDC Mode (VOTRE MODE PRINCIPAL)
+# Facture Mode
 # ---------------------------
-if st.session_state.mode == "bdc":
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("<h3 style='text-align:center'>📝 Scanner un Bon de Commande</h3>", unsafe_allow_html=True)
+if st.session_state.mode == "facture":
+    st.markdown('<div class="premium-card">', unsafe_allow_html=True)
+    st.markdown('<div class="card-title">📄 Scanner une Facture</div>', unsafe_allow_html=True)
     
-    uploaded = st.file_uploader("Téléchargez l'image du BDC", type=["jpg", "jpeg", "png"])
+    uploaded = st.file_uploader("Téléchargez l'image de la facture", 
+                                 type=["jpg", "jpeg", "png"],
+                                 key="facture_uploader")
     
     if uploaded:
-        # Vérifier si c'est un nouveau fichier
-        file_hash = f"{uploaded.name}_{uploaded.size}"
+        # Calculer le hash du fichier
+        file_hash = f"{uploaded.name}_{uploaded.size}_{uploaded.timestamp}"
         
-        if (st.session_state.last_uploaded_file != file_hash or 
-            st.session_state.last_saved_data is None):
-            # Nouveau fichier ou données non sauvegardées
+        if st.session_state.current_file_hash != file_hash:
+            # Nouveau fichier
+            try:
+                img = Image.open(uploaded)
+                st.image(img, caption="Aperçu de la facture", use_column_width=True)
+                
+                # Convertir en bytes
+                buf = BytesIO()
+                img.save(buf, format="JPEG")
+                img_bytes = buf.getvalue()
+                
+                # Traitement OCR
+                with st.spinner("🔍 Traitement OCR en cours..."):
+                    progress_bar = st.progress(0)
+                    for i in range(100):
+                        time.sleep(0.01)
+                        progress_bar.progress(i + 1)
+                    
+                    try:
+                        result = invoice_pipeline(img_bytes)
+                        progress_bar.empty()
+                        
+                        # Stocker les résultats
+                        st.session_state.invoice_result = result
+                        st.session_state.current_file_hash = file_hash
+                        
+                        # Afficher les résultats
+                        st.markdown("</div>", unsafe_allow_html=True)
+                        
+                        # Section informations détectées
+                        st.markdown('<div class="premium-card">', unsafe_allow_html=True)
+                        st.markdown('<div class="card-title">📋 Informations détectées</div>', unsafe_allow_html=True)
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            facture = st.text_input("Numéro de facture", 
+                                                   value=result.get("facture", ""),
+                                                   key="invoice_number")
+                            adresse = st.text_input("Adresse de livraison", 
+                                                   value=result.get("adresse", ""),
+                                                   key="delivery_address")
+                        
+                        with col2:
+                            doit = st.text_input("DOIT", 
+                                                value=result.get("doit", ""),
+                                                key="doit_input")
+                            mois = st.text_input("Mois", 
+                                                value=result.get("mois", ""),
+                                                key="month_input")
+                            bon_commande = st.text_input("Bon de commande", 
+                                                         value=result.get("bon_commande", ""),
+                                                         key="bon_commande_input")
+                        
+                        st.markdown("</div>", unsafe_allow_html=True)
+                        
+                        # Section articles
+                        st.markdown('<div class="premium-card">', unsafe_allow_html=True)
+                        st.markdown('<div class="card-title">🛒 Articles détectés</div>', unsafe_allow_html=True)
+                        
+                        articles = result.get("articles", [])
+                        if articles:
+                            df = pd.DataFrame(articles)
+                            edited_df = st.data_editor(
+                                df,
+                                num_rows="dynamic",
+                                column_config={
+                                    "article": st.column_config.TextColumn("Article", width="large"),
+                                    "bouteilles": st.column_config.NumberColumn("Bouteilles", min_value=0, width="small")
+                                },
+                                use_container_width=True,
+                                key="invoice_items_editor"
+                            )
+                            st.session_state.edited_invoice_df = edited_df
+                        else:
+                            st.warning("Aucun article détecté. Ajoutez-les manuellement.")
+                            df = pd.DataFrame(columns=["article", "bouteilles"])
+                            edited_df = st.data_editor(
+                                df,
+                                num_rows="dynamic",
+                                column_config={
+                                    "article": st.column_config.TextColumn("Article"),
+                                    "bouteilles": st.column_config.NumberColumn("Bouteilles", min_value=0)
+                                },
+                                use_container_width=True,
+                                key="invoice_items_editor_empty"
+                            )
+                            st.session_state.edited_invoice_df = edited_df
+                        
+                        if st.button("➕ Ajouter une ligne", key="add_invoice_line"):
+                            new_row = {"article": "", "bouteilles": 0}
+                            new_df = pd.DataFrame([new_row])
+                            st.session_state.edited_invoice_df = pd.concat([edited_df, new_df], ignore_index=True)
+                            st.rerun()
+                        
+                        st.markdown("</div>", unsafe_allow_html=True)
+                        
+                        # Section OCR brut
+                        st.markdown('<div class="premium-card">', unsafe_allow_html=True)
+                        with st.expander("📄 Voir le texte OCR brut"):
+                            st.text_area("Texte OCR", value=result.get("raw", ""), height=200, key="invoice_ocr_raw")
+                        st.markdown("</div>", unsafe_allow_html=True)
+                        
+                        # Section export Google Sheets
+                        st.markdown('<div class="premium-card">', unsafe_allow_html=True)
+                        st.markdown('<div class="card-title">📤 Export vers Google Sheets</div>', unsafe_allow_html=True)
+                        
+                        ws = get_invoice_worksheet()
+                        
+                        if ws is None:
+                            st.warning("⚠️ Google Sheets non configuré. Configurez les credentials dans les secrets.")
+                        else:
+                            if st.button("💾 Enregistrer la facture", type="primary", use_container_width=True):
+                                with st.spinner("Enregistrement en cours..."):
+                                    try:
+                                        # Préparer les données
+                                        invoice_data = {
+                                            "facture": facture,
+                                            "doit": doit,
+                                            "adresse": adresse,
+                                            "mois": mois,
+                                            "bon_commande": bon_commande,
+                                            "articles": st.session_state.edited_invoice_df.to_dict('records')
+                                        }
+                                        
+                                        # Enregistrer sans doublons
+                                        saved_count, duplicate_count = save_invoice_without_duplicates(ws, invoice_data)
+                                        
+                                        if saved_count > 0:
+                                            st.session_state.invoice_scans += 1
+                                            st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succuis!")
+                                            
+                                            if duplicate_count > 0:
+                                                st.info(f"⚠️ {duplicate_count} ligne(s) en doublon non ajoutée(s)")
+                                            
+                                            st.info(f"👤 Enregistré par: {st.session_state.user_nom}")
+                                            st.session_state.current_file_hash = None
+                                            time.sleep(1)
+                                            st.rerun()
+                                        elif duplicate_count > 0:
+                                            st.warning("⚠️ Cette facture existe déjà dans la base de données.")
+                                        else:
+                                            st.warning("⚠️ Aucune donnée à enregistrer")
+                                            
+                                    except Exception as e:
+                                        st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
+                        
+                        st.markdown("</div>", unsafe_allow_html=True)
+                        
+                    except Exception as e:
+                        progress_bar.empty()
+                        st.error(f"❌ Erreur OCR: {str(e)}")
+            except Exception as e:
+                st.error(f"❌ Erreur de traitement d'image: {str(e)}")
+        else:
+            st.info("📄 Cette facture a déjà été traitée. Téléchargez une nouvelle image si nécessaire.")
+            st.markdown("</div>", unsafe_allow_html=True)
+    
+    else:
+        st.info("📤 Veuillez télécharger une image de facture")
+        st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Boutons de navigation
+    st.markdown('<div class="premium-card">', unsafe_allow_html=True)
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col1:
+        if st.button("⬅️ Retour", use_container_width=True):
+            st.session_state.mode = None
+            st.session_state.current_file_hash = None
+            st.rerun()
+    
+    with col2:
+        if st.button("📝 Passer aux BDC", use_container_width=True):
+            st.session_state.mode = "bdc"
+            st.session_state.current_file_hash = None
+            st.rerun()
+    
+    with col3:
+        if st.button("🚪 Déconnexion", use_container_width=True):
+            st.session_state.auth = False
+            st.session_state.user_nom = ""
+            st.session_state.mode = None
+            st.session_state.current_file_hash = None
+            st.rerun()
+    
+    st.markdown("</div>", unsafe_allow_html=True)
+
+# ---------------------------
+# BDC Mode
+# ---------------------------
+elif st.session_state.mode == "bdc":
+    st.markdown('<div class="premium-card">', unsafe_allow_html=True)
+    st.markdown('<div class="card-title">📝 Scanner un Bon de Commande</div>', unsafe_allow_html=True)
+    
+    uploaded = st.file_uploader("Téléchargez l'image du BDC", 
+                                 type=["jpg", "jpeg", "png"],
+                                 key="bdc_uploader")
+    
+    if uploaded:
+        # Calculer le hash du fichier
+        file_hash = f"{uploaded.name}_{uploaded.size}_{uploaded.timestamp}"
+        
+        if st.session_state.current_file_hash != file_hash:
+            # Nouveau fichier
             try:
                 img = Image.open(uploaded)
                 st.image(img, caption="Aperçu du BDC", use_column_width=True)
@@ -570,40 +1104,53 @@ if st.session_state.mode == "bdc":
                 img_bytes = buf.getvalue()
                 
                 # Traitement OCR
-                with st.spinner("Traitement OCR en cours..."):
+                with st.spinner("🔍 Traitement OCR en cours..."):
+                    progress_bar = st.progress(0)
+                    for i in range(100):
+                        time.sleep(0.01)
+                        progress_bar.progress(i + 1)
+                    
                     try:
                         result = bdc_pipeline(img_bytes)
+                        progress_bar.empty()
                         
-                        # Stocker les résultats dans session state
-                        st.session_state.current_result = result
-                        st.session_state.last_uploaded_file = file_hash
+                        # Stocker les résultats
+                        st.session_state.bdc_result = result
+                        st.session_state.current_file_hash = file_hash
                         
                         # Afficher les résultats
                         st.markdown("</div>", unsafe_allow_html=True)
                         
                         # Section informations détectées
-                        st.markdown("<div class='card'>", unsafe_allow_html=True)
-                        st.markdown("<h4>📋 Informations détectées</h4>", unsafe_allow_html=True)
+                        st.markdown('<div class="premium-card">', unsafe_allow_html=True)
+                        st.markdown('<div class="card-title">📋 Informations détectées</div>', unsafe_allow_html=True)
                         
                         col1, col2 = st.columns(2)
                         with col1:
-                            numero = st.text_input("Numéro BDC", value=result.get("numero", "25011956"), key="numero_bdc")
-                            client = st.text_input("Client/Facturation", value=result.get("client", "S2M"), key="client_bdc")
+                            numero = st.text_input("Numéro BDC", 
+                                                  value=result.get("numero", "25011956"),
+                                                  key="bdc_number")
+                            client = st.text_input("Client/Facturation", 
+                                                  value=result.get("client", "S2M"),
+                                                  key="bdc_client")
                         
                         with col2:
-                            date = st.text_input("Date émission", value=result.get("date", "04/11/2025"), key="date_bdc")
-                            adresse = st.text_input("Adresse livraison", value=result.get("adresse_livraison", "SCORE TALATAMATY"), key="adresse_bdc")
+                            date = st.text_input("Date émission", 
+                                                value=result.get("date", "04/11/2025"),
+                                                key="bdc_date")
+                            adresse = st.text_input("Adresse livraison", 
+                                                   value=result.get("adresse_livraison", "SCORE TALATAMATY"),
+                                                   key="bdc_address")
                         
                         st.markdown("</div>", unsafe_allow_html=True)
                         
                         # Section articles
-                        st.markdown("<div class='card'>", unsafe_allow_html=True)
-                        st.markdown("<h4>🛒 Articles détectés</h4>", unsafe_allow_html=True)
+                        st.markdown('<div class="premium-card">', unsafe_allow_html=True)
+                        st.markdown('<div class="card-title">🛒 Articles détectés</div>', unsafe_allow_html=True)
                         
                         articles = result.get("articles", [])
                         if articles:
                             df = pd.DataFrame(articles)
-                            st.session_state.current_df = df.copy()
                             edited_df = st.data_editor(
                                 df,
                                 num_rows="dynamic",
@@ -612,9 +1159,9 @@ if st.session_state.mode == "bdc":
                                     "Qté": st.column_config.NumberColumn("Qté", format="%.3f", width="small")
                                 },
                                 use_container_width=True,
-                                key="articles_editor"
+                                key="bdc_items_editor"
                             )
-                            st.session_state.edited_df = edited_df
+                            st.session_state.edited_bdc_df = edited_df
                         else:
                             st.warning("Aucun article détecté. Ajoutez-les manuellement.")
                             df = pd.DataFrame(columns=["Désignation", "Qté"])
@@ -626,97 +1173,76 @@ if st.session_state.mode == "bdc":
                                     "Qté": st.column_config.NumberColumn("Qté", format="%.3f")
                                 },
                                 use_container_width=True,
-                                key="articles_editor_empty"
+                                key="bdc_items_editor_empty"
                             )
-                            st.session_state.edited_df = edited_df
+                            st.session_state.edited_bdc_df = edited_df
+                        
+                        if st.button("➕ Ajouter une ligne", key="add_bdc_line"):
+                            new_row = {"Désignation": "", "Qté": ""}
+                            new_df = pd.DataFrame([new_row])
+                            st.session_state.edited_bdc_df = pd.concat([edited_df, new_df], ignore_index=True)
+                            st.rerun()
                         
                         st.markdown("</div>", unsafe_allow_html=True)
                         
                         # Section OCR brut
-                        st.markdown("<div class='card'>", unsafe_allow_html=True)
+                        st.markdown('<div class="premium-card">', unsafe_allow_html=True)
                         with st.expander("📄 Voir le texte OCR brut"):
-                            st.text_area("Texte OCR", value=result.get("raw", ""), height=200, key="ocr_raw")
+                            st.text_area("Texte OCR", value=result.get("raw", ""), height=200, key="bdc_ocr_raw")
                         st.markdown("</div>", unsafe_allow_html=True)
                         
                         # Section export Google Sheets
-                        st.markdown("<div class='card'>", unsafe_allow_html=True)
-                        st.markdown("<h4>📤 Export vers Google Sheets</h4>", unsafe_allow_html=True)
+                        st.markdown('<div class="premium-card">', unsafe_allow_html=True)
+                        st.markdown('<div class="card-title">📤 Export vers Google Sheets</div>', unsafe_allow_html=True)
                         
                         ws = get_bdc_worksheet()
                         
                         if ws is None:
                             st.warning("⚠️ Google Sheets non configuré. Configurez les credentials dans les secrets.")
                         else:
-                            # Bouton avec état
-                            save_button_key = f"save_button_{file_hash}"
-                            
-                            # Vérifier si déjà sauvegardé
-                            already_saved = st.session_state.last_saved_data == file_hash
-                            
-                            if already_saved:
-                                st.success("✅ Ce BDC a déjà été enregistré avec succuis!")
-                                st.info("Pour enregistrer à nouveau, téléchargez un nouveau fichier.")
-                            else:
-                                if st.button("💾 Enregistrer dans Google Sheets", key=save_button_key, disabled=already_saved):
-                                    with st.spinner("Enregistrement en cours..."):
-                                        try:
-                                            # Préparer les données
-                                            data_to_save = []
-                                            current_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M")
+                            if st.button("💾 Enregistrer le BDC", type="primary", use_container_width=True):
+                                with st.spinner("Enregistrement en cours..."):
+                                    try:
+                                        # Préparer les données
+                                        bdc_data = {
+                                            "numero": numero,
+                                            "client": client,
+                                            "date": date,
+                                            "adresse_livraison": adresse,
+                                            "articles": st.session_state.edited_bdc_df.to_dict('records')
+                                        }
+                                        
+                                        # Enregistrer sans doublons
+                                        saved_count, duplicate_count = save_bdc_without_duplicates(ws, bdc_data)
+                                        
+                                        if saved_count > 0:
+                                            st.session_state.bdc_scans += 1
+                                            st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succuis!")
                                             
-                                            # Récupérer les données éditées
-                                            if 'edited_df' in locals():
-                                                df_to_save = edited_df
-                                            elif hasattr(st.session_state, 'edited_df'):
-                                                df_to_save = st.session_state.edited_df
-                                            else:
-                                                df_to_save = pd.DataFrame(articles)
+                                            if duplicate_count > 0:
+                                                st.info(f"⚠️ {duplicate_count} ligne(s) en doublon non ajoutée(s)")
                                             
-                                            for _, row in df_to_save.iterrows():
-                                                if str(row["Désignation"]).strip() and str(row["Qté"]).strip():
-                                                    data_to_save.append([
-                                                        numero,
-                                                        client,
-                                                        date,
-                                                        adresse,
-                                                        str(row["Désignation"]).strip(),
-                                                        str(row["Qté"]).strip(),
-                                                        current_timestamp,
-                                                        st.session_state.user_nom
-                                                    ])
+                                            st.info(f"👤 Enregistré par: {st.session_state.user_nom}")
+                                            st.session_state.current_file_hash = None
+                                            time.sleep(1)
+                                            st.rerun()
+                                        elif duplicate_count > 0:
+                                            st.warning("⚠️ Ce BDC existe déjà dans la base de données.")
+                                        else:
+                                            st.warning("⚠️ Aucune donnée à enregistrer")
                                             
-                                            if data_to_save:
-                                                # Enregistrer en évitant les doublons
-                                                saved_count, duplicate_count = save_to_sheets_without_duplicates(ws, data_to_save)
-                                                
-                                                if saved_count > 0:
-                                                    st.session_state.last_saved_data = file_hash
-                                                    st.session_state.scan_index += 1
-                                                    st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succuis!")
-                                                    
-                                                    if duplicate_count > 0:
-                                                        st.info(f"⚠️ {duplicate_count} ligne(s) en doublon non ajoutée(s)")
-                                                    
-                                                    st.info(f"👤 Enregistré par: {st.session_state.user_nom} à {current_timestamp}")
-                                                    st.rerun()
-                                                else:
-                                                    st.warning("⚠️ Toutes les données étaient déjà présentes dans la feuille.")
-                                            else:
-                                                st.warning("⚠️ Aucune donnée valide à enregistrer")
-                                                
-                                        except Exception as e:
-                                            st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
+                                    except Exception as e:
+                                        st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
                         
                         st.markdown("</div>", unsafe_allow_html=True)
                         
                     except Exception as e:
+                        progress_bar.empty()
                         st.error(f"❌ Erreur OCR: {str(e)}")
-            
             except Exception as e:
                 st.error(f"❌ Erreur de traitement d'image: {str(e)}")
         else:
-            # Fichier déjà traité
-            st.info("📄 Ce fichier a déjà été traité. Si vous voulez ré-analyser, téléchargez à nouveau.")
+            st.info("📝 Ce BDC a déjà été traité. Téléchargez une nouvelle image si nécessaire.")
             st.markdown("</div>", unsafe_allow_html=True)
     
     else:
@@ -724,56 +1250,40 @@ if st.session_state.mode == "bdc":
         st.markdown("</div>", unsafe_allow_html=True)
     
     # Boutons de navigation
+    st.markdown('<div class="premium-card">', unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
     with col1:
-        if st.button("⬅️ Retour au menu"):
+        if st.button("⬅️ Retour", use_container_width=True):
             st.session_state.mode = None
-            st.session_state.last_uploaded_file = None
-            st.session_state.last_saved_data = None
-            st.rerun()
-    
-    with col3:
-        if st.button("🚪 Déconnexion"):
-            st.session_state.auth = False
-            st.session_state.user_nom = ""
-            st.session_state.mode = None
-            st.session_state.last_uploaded_file = None
-            st.session_state.last_saved_data = None
-            st.rerun()
-
-# ---------------------------
-# FACTURE Mode (simplifié)
-# ---------------------------
-elif st.session_state.mode == "facture":
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("<h3 style='text-align:center'>📄 Scanner une Facture</h3>", unsafe_allow_html=True)
-    
-    st.info("Mode facture - Version simplifiée")
-    
-    uploaded = st.file_uploader("Téléchargez l'image de facture", type=["jpg", "jpeg", "png"])
-    
-    if uploaded:
-        img = Image.open(uploaded)
-        st.image(img, caption="Aperçu de la facture", use_column_width=True)
-        
-        st.warning("⚠️ Mode facture en développement")
-    
-    # Boutons de navigation
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("⬅️ Retour au menu"):
-            st.session_state.mode = None
+            st.session_state.current_file_hash = None
             st.rerun()
     
     with col2:
-        if st.button("📝 Aller aux BDC"):
-            st.session_state.mode = "bdc"
+        if st.button("📄 Passer aux factures", use_container_width=True):
+            st.session_state.mode = "facture"
+            st.session_state.current_file_hash = None
             st.rerun()
+    
+    with col3:
+        if st.button("🚪 Déconnexion", use_container_width=True):
+            st.session_state.auth = False
+            st.session_state.user_nom = ""
+            st.session_state.mode = None
+            st.session_state.current_file_hash = None
+            st.rerun()
+    
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------------------
 # Footer
 # ---------------------------
-st.markdown("---")
-st.markdown(f"<p style='text-align:center;color:{PALETTE['muted']};font-size:0.8em'>"
-            f"Session: {st.session_state.user_nom} | Scans: {st.session_state.scan_index}</p>", 
-            unsafe_allow_html=True)
+st.markdown("""
+    <div class="footer">
+        <div>© 2024 Chan Foui et Fils — OCR Facture PRO</div>
+        <div>Session: <span class="highlight">""" + st.session_state.user_nom + """</span> | 
+             Factures: <span class="highlight">""" + str(st.session_state.invoice_scans) + """</span> | 
+             BDC: <span class="highlight">""" + str(st.session_state.bdc_scans) + """</span>
+        </div>
+        <div style="font-size: 0.7rem; margin-top: 0.5rem;">Google Vision API • Streamlit • Premium Design</div>
+    </div>
+""", unsafe_allow_html=True)
