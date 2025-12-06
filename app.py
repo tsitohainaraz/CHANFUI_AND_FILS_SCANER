@@ -340,6 +340,85 @@ def invoice_pipeline(image_bytes: bytes):
     }
 
 # ---------------------------
+# ADD PIMPELINE
+# ---------------------------
+def extract_table_bdc_8cols(text: str):
+    """
+    Extraction robuste des 8 colonnes :
+    Ref four | Code ean | Désignation | PCB | Nb colis | Qté | P.A fact | T.TVA
+    Fonctionne même si OCR casse les lignes.
+    """
+    lines = [l.strip() for l in text.split("\n") if l.strip()]
+
+    items = []
+    i = 0
+    while i < len(lines):
+        l = lines[i]
+
+        # Chercher un Ref four = 6 à 9 chiffres
+        if re.fullmatch(r"\d{6,12}", l):
+            ref_four = l
+            i += 1
+
+            # Code EAN (souvent 9 à 14 chiffres)
+            if i < len(lines) and re.fullmatch(r"\d{8,14}", lines[i]):
+                code_ean = lines[i]
+                i += 1
+            else:
+                code_ean = ""
+
+            # Désignation (1 à plusieurs lignes jusqu'à chiffre PCB)
+            designation_lines = []
+            while i < len(lines) and not re.fullmatch(r"\d{1,3}", lines[i]):
+                designation_lines.append(lines[i])
+                i += 1
+            designation = " ".join(designation_lines).strip()
+
+            # PCB = petit entier (ex : 6, 12)
+            pcb = lines[i] if i < len(lines) and re.fullmatch(r"\d{1,3}", lines[i]) else ""
+            if pcb:
+                i += 1
+
+            # Nb colis (ex : 1.00 ou 2,00)
+            nb_colis = ""
+            if i < len(lines) and re.fullmatch(r"\d+[.,]\d+", lines[i]):
+                nb_colis = lines[i]
+                i += 1
+
+            # Bloc Qté / Nb colis / PA fact (ex: "12,000 8 625,000")
+            qte = ""
+            pa_fact = ""
+            if i < len(lines) and re.search(r"\d", lines[i]):
+                bloc = lines[i].replace(",", ".")
+                nums = re.findall(r"[\d\.]+", bloc)
+                if len(nums) >= 3:
+                    qte = nums[0]
+                    nb_colis = nums[1] if not nb_colis else nb_colis  # si absent plus tôt
+                    pa_fact = nums[2]
+                i += 1
+
+            # T.TVA (ex : 20.00)
+            tva = ""
+            if i < len(lines) and re.fullmatch(r"\d+[.,]\d+", lines[i]):
+                tva = lines[i]
+                i += 1
+
+            items.append({
+                "ref_four": ref_four,
+                "code_ean": code_ean,
+                "designation": designation,
+                "pcb": pcb,
+                "nb_colis": nb_colis,
+                "qte": qte,
+                "pa_fact": pa_fact,
+                "tva": tva
+            })
+
+        else:
+            i += 1
+        
+    return items
+# ---------------------------
 # BDC pipeline (amélioré)
 # ---------------------------
 def extract_bdc_number(text: str) -> str:
@@ -406,14 +485,21 @@ def bdc_pipeline(image_bytes: bytes):
     date = extract_bdc_date(raw)
     client = extract_bdc_client(raw)
     adresse_liv = extract_bdc_delivery_address(raw)
-    items = extract_items(raw)
+    items = extract_table_bdc_8cols(raw)
 
     normalized = []
-    for it in items:
-        normalized.append({
-            "article": it.get("article", "").strip(),
-            "quantite": int(it.get("quantite", 0))
-        })
+for it in items:
+    normalized.append({
+        "Ref four.": it["ref_four"],
+        "Code ean": it["code_ean"],
+        "Désignation": it["designation"],
+        "PCB": it["pcb"],
+        "Nb colis": it["nb_colis"],
+        "Qté": it["qte"],
+        "P.A fact.": it["pa_fact"],
+        "T.TVA": it["tva"]
+    })
+
 
     return {
         "raw": raw,
@@ -1219,3 +1305,4 @@ if st.button("🚪 Déconnexion"):
         pass
 
 # End of file
+
