@@ -347,6 +347,48 @@ def invoice_pipeline(image_bytes: bytes):
     raw = google_vision_ocr(cleaned)
     raw = clean_text(raw)
     return extract_invoice_info(raw)
+# ---------------------------
+# Google Sheets Functions (AJOUTER APRÈS extract_designation_qte_from_ocr)
+# ---------------------------
+
+def get_sheets_service():
+    """Crée un service Google Sheets"""
+    if "gcp_sheet" in st.secrets:
+        sa_info = dict(st.secrets["gcp_sheet"])
+    elif "google_service_account" in st.secrets:
+        sa_info = dict(st.secrets["google_service_account"])
+    else:
+        raise FileNotFoundError("Credentials Google Sheets introuvables dans st.secrets")
+    
+    creds = SA_Credentials.from_service_account_info(
+        sa_info, 
+        scopes=["https://www.googleapis.com/auth/spreadsheets"]
+    )
+    service = build("sheets", "v4", credentials=creds)
+    return service
+
+def get_bdc_worksheet():
+    """Obtient la feuille BDC spécifique"""
+    try:
+        if "gcp_sheet" in st.secrets:
+            sa_info = dict(st.secrets["gcp_sheet"])
+        elif "google_service_account" in st.secrets:
+            sa_info = dict(st.secrets["google_service_account"])
+        else:
+            return None
+        
+        client = gspread.service_account_from_dict(sa_info)
+        sh = client.open_by_key(BDC_SHEET_ID)
+        
+        # Essayer de trouver la feuille par GID
+        for ws in sh.worksheets():
+            if int(ws.id) == BDC_SHEET_GID:
+                return ws
+        
+        # Fallback à la première feuille
+        return sh.sheet1
+    except Exception:
+        return None
 
 # ---------------------------
 # Google Sheets Functions
@@ -527,48 +569,202 @@ if st.session_state.mode == "bdc":
                         st.text_area("Texte OCR", value=result.get("raw", ""), height=200)
                     st.markdown("</div>", unsafe_allow_html=True)
                     
-                    # Section export Google Sheets
-                    st.markdown("<div class='card'>", unsafe_allow_html=True)
-                    st.markdown("<h4>📤 Export vers Google Sheets</h4>", unsafe_allow_html=True)
+                    # ---------------------------
+# SECTION EXPORT GOOGLE SHEETS (NOUVELLE VERSION)
+# ---------------------------
+st.markdown("<div class='card'>", unsafe_allow_html=True)
+st.markdown("<h4>📤 Export vers Google Sheets</h4>", unsafe_allow_html=True)
+
+# Sélecteur de ligne de départ
+col1, col2 = st.columns(2)
+with col1:
+    start_row = st.number_input(
+        "Ligne de départ", 
+        min_value=1, 
+        value=205, 
+        step=1,
+        key="start_row_bdc",
+        help="Numéro de ligne où commencer l'insertion (ex: 205)"
+    )
+with col2:
+    overwrite = st.checkbox(
+        "Écraser les données existantes", 
+        value=True,
+        key="overwrite_bdc",
+        help="Efface les données existantes dans la plage sélectionnée"
+    )
+
+# Obtenir la feuille
+ws = get_bdc_worksheet()
+
+if ws is None:
+    st.warning("⚠️ Google Sheets non configuré. Configurez les credentials dans les secrets.")
+    st.info("Ajoutez vos credentials dans .streamlit/secrets.toml")
+else:
+    if st.button("💾 Enregistrer dans Google Sheets", type="primary", key="save_bdc"):
+        try:
+            # Préparer les données
+            data_to_save = []
+            for _, row in edited_df.iterrows():
+                desig = str(row.get("Désignation", "")).strip()
+                qte = str(row.get("Qté", "")).strip()
+                
+                if desig and qte:
+                    # Convertir la quantité en format numérique propre
+                    try:
+                        qte_clean = float(qte.replace(",", "."))
+                    except:
+                        qte_clean = qte
                     
-                    ws = get_bdc_worksheet()
-                    
-                    if ws is None:
-                        st.warning("⚠️ Google Sheets non configuré. Configurez les credentials dans les secrets.")
+                    data_to_save.append([
+                        numero_val or "",
+                        client_val or "",
+                        date_val or "",
+                        adresse_val or "",
+                        desig,
+                        qte_clean,
+                        datetime.now().strftime("%d/%m/%Y %H:%M"),
+                        st.session_state.user_nom
+                    ])
+            
+            if not data_to_save:
+                st.warning("⚠️ Aucune donnée valide à enregistrer")
+                st.stop()
+            
+            with st.spinner(f"Enregistrement sur les lignes {start_row} à {start_row + len(data_to_save) - 1}..."):
+                try:
+                    # 1. Préparer le service Sheets API
+                    if "gcp_sheet" in st.secrets:
+                        sa_info = dict(st.secrets["gcp_sheet"])
+                    elif "google_service_account" in st.secrets:
+                        sa_info = dict(st.secrets["google_service_account"])
                     else:
-                        if st.button("💾 Enregistrer dans Google Sheets"):
-                            try:
-                                # Préparer les données
-                                data_to_save = []
-                                for _, row in edited_df.iterrows():
-                                    if str(row["Désignation"]).strip() and str(row["Qté"]).strip():
-                                        data_to_save.append([
-                                            numero,
-                                            client,
-                                            date,
-                                            adresse,
-                                            str(row["Désignation"]).strip(),
-                                            str(row["Qté"]).strip(),
-                                            datetime.now().strftime("%d/%m/%Y %H:%M"),
-                                            st.session_state.user_nom
-                                        ])
-                                
-                                if data_to_save:
-                                    # Ajouter les données
-                                    ws.append_rows(data_to_save)
-                                    
-                                    st.success(f"✅ {len(data_to_save)} lignes enregistrées avec succès!")
-                                    st.info(f"👤 Enregistré par: {st.session_state.user_nom}")
-                                    
-                                    # Incrémenter l'index de scan
-                                    st.session_state.scan_index += 1
-                                else:
-                                    st.warning("⚠️ Aucune donnée à enregistrer")
-                                    
-                            except Exception as e:
-                                st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
+                        raise Exception("❌ Credentials Google Sheets manquants")
                     
-                    st.markdown("</div>", unsafe_allow_html=True)
+                    creds = SA_Credentials.from_service_account_info(
+                        sa_info, 
+                        scopes=["https://www.googleapis.com/auth/spreadsheets"]
+                    )
+                    service = build("sheets", "v4", credentials=creds)
+                    
+                    # 2. Écrire les données à la position spécifiée
+                    range_name = f"A{start_row}"
+                    
+                    body = {
+                        "values": data_to_save,
+                        "majorDimension": "ROWS"
+                    }
+                    
+                    # Mettre à jour les valeurs
+                    result = service.spreadsheets().values().update(
+                        spreadsheetId=BDC_SHEET_ID,
+                        range=range_name,
+                        valueInputOption="USER_ENTERED",
+                        body=body
+                    ).execute()
+                    
+                    updated_cells = result.get("updatedCells", 0)
+                    
+                    st.success(f"✅ {len(data_to_save)} lignes enregistrées avec succès!")
+                    st.info(f"📍 Emplacement: Lignes {start_row} à {start_row + len(data_to_save) - 1}")
+                    st.info(f"👤 Enregistré par: {st.session_state.user_nom}")
+                    
+                    # 3. Appliquer la coloration alternée
+                    try:
+                        requests = []
+                        for i in range(len(data_to_save)):
+                            row_idx = start_row + i - 1  # -1 car index 0-based
+                            
+                            # Alternance de couleurs basée sur l'index global
+                            color_index = st.session_state.scan_index + i
+                            
+                            if color_index % 2 == 0:
+                                # Ligne paire : Blanc
+                                bg_color = {"red": 1.0, "green": 1.0, "blue": 1.0}
+                                text_color = {"red": 0.0, "green": 0.0, "blue": 0.0}
+                            else:
+                                # Ligne impaire : Bleu pétrole
+                                bg_color = {"red": 15/255.0, "green": 58/255.0, "blue": 69/255.0}
+                                text_color = {"red": 1.0, "green": 1.0, "blue": 1.0}
+                            
+                            requests.append({
+                                "repeatCell": {
+                                    "range": {
+                                        "sheetId": ws.id,
+                                        "startRowIndex": row_idx,
+                                        "endRowIndex": row_idx + 1,
+                                        "startColumnIndex": 0,
+                                        "endColumnIndex": 8  # 8 colonnes (A-H)
+                                    },
+                                    "cell": {
+                                        "userEnteredFormat": {
+                                            "backgroundColor": bg_color,
+                                            "textFormat": {
+                                                "foregroundColor": text_color
+                                            }
+                                        }
+                                    },
+                                    "fields": "userEnteredFormat(backgroundColor,textFormat)"
+                                }
+                            })
+                        
+                        # Exécuter les requêtes de formatage
+                        if requests:
+                            service.spreadsheets().batchUpdate(
+                                spreadsheetId=BDC_SHEET_ID,
+                                body={"requests": requests}
+                            ).execute()
+                        
+                        st.info("🎨 Coloration alternée appliquée")
+                        
+                    except Exception as color_error:
+                        st.warning(f"⚠️ Formatage non appliqué: {str(color_error)}")
+                    
+                    # 4. Mettre à jour l'index de scan
+                    st.session_state.scan_index += len(data_to_save)
+                    
+                    # 5. Afficher un aperçu des données envoyées
+                    with st.expander("📋 Aperçu des données envoyées"):
+                        preview_df = pd.DataFrame(
+                            data_to_save,
+                            columns=["Numéro", "Client", "Date", "Adresse", "Désignation", "Qté", "Date envoi", "Utilisateur"]
+                        )
+                        st.dataframe(preview_df)
+                    
+                except Exception as api_error:
+                    # Fallback: utiliser gspread si l'API échoue
+                    st.warning("Méthode API échouée, tentative avec gspread...")
+                    
+                    try:
+                        # Lire toutes les données existantes
+                        all_data = ws.get_all_values()
+                        
+                        # S'assurer qu'il y a assez de lignes
+                        if start_row > len(all_data):
+                            # Ajouter des lignes vides
+                            rows_needed = start_row - len(all_data)
+                            empty_rows = [[""] * 8 for _ in range(rows_needed)]
+                            ws.append_rows(empty_rows, value_input_option="USER_ENTERED")
+                        
+                        # Mettre à jour ligne par ligne
+                        for i, row_data in enumerate(data_to_save):
+                            row_num = start_row + i
+                            # Formater la plage (ex: "A205:H205")
+                            cell_range = f"A{row_num}:H{row_num}"
+                            ws.update(cell_range, [row_data], value_input_option="USER_ENTERED")
+                        
+                        st.success(f"✅ {len(data_to_save)} lignes enregistrées (méthode gspread)")
+                        st.info(f"📍 Lignes {start_row} à {start_row + len(data_to_save) - 1}")
+                        
+                    except Exception as gspread_error:
+                        st.error(f"❌ Échec complet: {str(gspread_error)}")
+                        
+        except Exception as e:
+            st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
+
+st.markdown("</div>", unsafe_allow_html=True)
                     
                 except Exception as e:
                     st.error(f"❌ Erreur OCR: {str(e)}")
@@ -630,3 +826,4 @@ st.markdown("---")
 st.markdown(f"<p style='text-align:center;color:{PALETTE['muted']};font-size:0.8em'>"
             f"Session: {st.session_state.user_nom} | Scans: {st.session_state.scan_index}</p>", 
             unsafe_allow_html=True)
+
