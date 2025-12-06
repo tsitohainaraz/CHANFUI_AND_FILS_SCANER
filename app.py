@@ -438,7 +438,7 @@ def get_invoice_worksheet():
     except Exception:
         return None
 
-def save_invoice_without_duplicates(ws, invoice_data):
+def save_invoice_without_duplicates(ws, invoice_data, user_nom):
     try:
         # Récupérer toutes les données existantes
         all_values = ws.get_all_values()
@@ -468,7 +468,7 @@ def save_invoice_without_duplicates(ws, invoice_data):
                 item["article"],
                 item["bouteilles"],
                 timestamp,
-                st.session_state.user_nom
+                user_nom
             ])
         
         if rows_to_add:
@@ -479,7 +479,7 @@ def save_invoice_without_duplicates(ws, invoice_data):
     except Exception as e:
         raise Exception(f"Erreur lors de l'enregistrement: {str(e)}")
 
-def save_bdc_without_duplicates(ws, bdc_data):
+def save_bdc_without_duplicates(ws, bdc_data, user_nom):
     try:
         # Récupérer toutes les données existantes
         all_values = ws.get_all_values()
@@ -507,7 +507,7 @@ def save_bdc_without_duplicates(ws, bdc_data):
                 item["Désignation"],
                 item["Qté"],
                 timestamp,
-                st.session_state.user_nom
+                user_nom
             ])
         
         if rows_to_add:
@@ -519,7 +519,7 @@ def save_bdc_without_duplicates(ws, bdc_data):
         raise Exception(f"Erreur lors de l'enregistrement: {str(e)}")
 
 # ---------------------------
-# Session State
+# Session State - CORRIGÉ
 # ---------------------------
 if "auth" not in st.session_state:
     st.session_state.auth = False
@@ -587,7 +587,7 @@ if st.session_state.mode is None:
     st.stop()
 
 # ---------------------------
-# Facture Mode
+# Facture Mode - CORRIGÉ
 # ---------------------------
 if st.session_state.mode == "facture":
     st.markdown("<div class='card'>", unsafe_allow_html=True)
@@ -685,46 +685,51 @@ if st.session_state.mode == "facture":
                     else:
                         if st.button("💾 Enregistrer la facture"):
                             try:
-                                # Préparer les données
-                                data_to_save = []
-                                for _, row in edited_df.iterrows():
-                                    if str(row["article"]).strip() and str(row["bouteilles"]).strip():
-                                        data_to_save.append([
-                                            facture,
-                                            doit,
-                                            datetime.now().strftime("%d/%m/%Y"),
-                                            bon_commande,
-                                            adresse,
-                                            str(row["article"]).strip(),
-                                            str(row["bouteilles"]).strip(),
-                                            datetime.now().strftime("%d/%m/%Y %H:%M"),
-                                            st.session_state.user_nom
-                                        ])
-                                
-                                if data_to_save:
-                                    # Enregistrer sans doublons
-                                    saved_count, duplicate_count = save_invoice_without_duplicates(ws, {
-                                        "facture": facture,
-                                        "doit": doit,
-                                        "adresse": adresse,
-                                        "mois": mois,
-                                        "bon_commande": bon_commande,
-                                        "articles": edited_df.to_dict('records')
-                                    })
+                                # Vérifier que user_nom existe
+                                if not hasattr(st.session_state, 'user_nom') or not st.session_state.user_nom:
+                                    st.error("❌ Erreur de session. Veuillez vous reconnecter.")
+                                else:
+                                    # Préparer les données
+                                    data_to_save = []
+                                    for _, row in edited_df.iterrows():
+                                        if str(row["article"]).strip() and str(row["bouteilles"]).strip():
+                                            data_to_save.append([
+                                                facture,
+                                                doit,
+                                                datetime.now().strftime("%d/%m/%Y"),
+                                                bon_commande,
+                                                adresse,
+                                                str(row["article"]).strip(),
+                                                str(row["bouteilles"]).strip(),
+                                                datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                                st.session_state.user_nom
+                                            ])
                                     
-                                    if saved_count > 0:
-                                        st.session_state.invoice_scans += 1
-                                        st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succuis!")
+                                    if data_to_save:
+                                        # Enregistrer sans doublons
+                                        saved_count, duplicate_count = save_invoice_without_duplicates(ws, {
+                                            "facture": facture,
+                                            "doit": doit,
+                                            "adresse": adresse,
+                                            "mois": mois,
+                                            "bon_commande": bon_commande,
+                                            "articles": edited_df.to_dict('records')
+                                        }, st.session_state.user_nom)
                                         
-                                        if duplicate_count > 0:
-                                            st.info(f"⚠️ {duplicate_count} ligne(s) en doublon non ajoutée(s)")
-                                        
-                                        st.info(f"👤 Enregistré par: {st.session_state.user_nom}")
-                                    elif duplicate_count > 0:
-                                        st.warning("⚠️ Cette facture existe déjà dans la base de données.")
-                                    else:
-                                        st.warning("⚠️ Aucune donnée valide à enregistrer")
-                                        
+                                        if saved_count > 0:
+                                            st.session_state.invoice_scans += 1
+                                            st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succuis!")
+                                            
+                                            if duplicate_count > 0:
+                                                st.info(f"⚠️ {duplicate_count} ligne(s) en doublon non ajoutée(s)")
+                                            
+                                            # Utiliser st.session_state.user_nom directement
+                                            st.info(f"👤 Enregistré par: {st.session_state.user_nom}")
+                                        elif duplicate_count > 0:
+                                            st.warning("⚠️ Cette facture existe déjà dans la base de données.")
+                                        else:
+                                            st.warning("⚠️ Aucune donnée valide à enregistrer")
+                                            
                             except Exception as e:
                                 st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
                     
@@ -760,7 +765,7 @@ if st.session_state.mode == "facture":
             st.rerun()
 
 # ---------------------------
-# BDC Mode
+# BDC Mode - CORRIGÉ
 # ---------------------------
 elif st.session_state.mode == "bdc":
     st.markdown("<div class='card'>", unsafe_allow_html=True)
@@ -857,43 +862,48 @@ elif st.session_state.mode == "bdc":
                     else:
                         if st.button("💾 Enregistrer dans Google Sheets"):
                             try:
-                                # Préparer les données
-                                data_to_save = []
-                                for _, row in edited_df.iterrows():
-                                    if str(row["Désignation"]).strip() and str(row["Qté"]).strip():
-                                        data_to_save.append([
-                                            numero,
-                                            client,
-                                            date,
-                                            adresse,
-                                            str(row["Désignation"]).strip(),
-                                            str(row["Qté"]).strip(),
-                                            datetime.now().strftime("%d/%m/%Y %H:%M"),
-                                            st.session_state.user_nom
-                                        ])
-                                
-                                if data_to_save:
-                                    # Enregistrer sans doublons
-                                    saved_count, duplicate_count = save_bdc_without_duplicates(ws, {
-                                        "numero": numero,
-                                        "client": client,
-                                        "date": date,
-                                        "adresse_livraison": adresse,
-                                        "articles": edited_df.to_dict('records')
-                                    })
+                                # Vérifier que user_nom existe
+                                if not hasattr(st.session_state, 'user_nom') or not st.session_state.user_nom:
+                                    st.error("❌ Erreur de session. Veuillez vous reconnecter.")
+                                else:
+                                    # Préparer les données
+                                    data_to_save = []
+                                    for _, row in edited_df.iterrows():
+                                        if str(row["Désignation"]).strip() and str(row["Qté"]).strip():
+                                            data_to_save.append([
+                                                numero,
+                                                client,
+                                                date,
+                                                adresse,
+                                                str(row["Désignation"]).strip(),
+                                                str(row["Qté"]).strip(),
+                                                datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                                st.session_state.user_nom
+                                            ])
                                     
-                                    if saved_count > 0:
-                                        st.session_state.bdc_scans += 1
-                                        st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succuis!")
+                                    if data_to_save:
+                                        # Enregistrer sans doublons
+                                        saved_count, duplicate_count = save_bdc_without_duplicates(ws, {
+                                            "numero": numero,
+                                            "client": client,
+                                            "date": date,
+                                            "adresse_livraison": adresse,
+                                            "articles": edited_df.to_dict('records')
+                                        }, st.session_state.user_nom)
                                         
-                                        if duplicate_count > 0:
-                                            st.info(f"⚠️ {duplicate_count} ligne(s) en doublon non ajoutée(s)")
-                                        
-                                        st.info(f"👤 Enregistré par: {st.session_state.user_nom}")
-                                    elif duplicate_count > 0:
-                                        st.warning("⚠️ Ce BDC existe déjà dans la base de données.")
-                                    else:
-                                        st.warning("⚠️ Aucune donnée valide à enregistrer")
+                                        if saved_count > 0:
+                                            st.session_state.bdc_scans += 1
+                                            st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succuis!")
+                                            
+                                            if duplicate_count > 0:
+                                                st.info(f"⚠️ {duplicate_count} ligne(s) en doublon non ajoutée(s)")
+                                            
+                                            # Utiliser st.session_state.user_nom directement
+                                            st.info(f"👤 Enregistré par: {st.session_state.user_nom}")
+                                        elif duplicate_count > 0:
+                                            st.warning("⚠️ Ce BDC existe déjà dans la base de données.")
+                                        else:
+                                            st.warning("⚠️ Aucune donnée valide à enregistrer")
                                         
                             except Exception as e:
                                 st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
