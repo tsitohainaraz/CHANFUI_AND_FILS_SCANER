@@ -488,28 +488,27 @@ def bdc_pipeline(image_bytes: bytes):
     items = extract_table_bdc_8cols(raw)
 
     normalized = []
-for it in items:
-    normalized.append({
-        "Ref four.": it["ref_four"],
-        "Code ean": it["code_ean"],
-        "Désignation": it["designation"],
-        "PCB": it["pcb"],
-        "Nb colis": it["nb_colis"],
-        "Qté": it["qte"],
-        "P.A fact.": it["pa_fact"],
-        "T.TVA": it["tva"]
-    })
-
-
-    return {
-        "raw": raw,
-        "numero": numero,
-        "client": client,
-        "date": date,
-        "adresse_livraison": adresse_liv,
-        "articles": normalized
-    }
-
+    for it in items:
+        normalized.append({
+            "Ref four.": it["ref_four"],
+            "Code ean": it["code_ean"],
+            "Désignation": it["designation"],
+            "PCB": it["pcb"],
+            "Nb colis": it["nb_colis"],
+            "Qté": it["qte"],
+            "P.A fact.": it["pa_fact"],
+            "T.TVA": it["tva"]
+        })
+    
+    
+        return {
+            "raw": raw,
+            "numero": numero,
+            "client": client,
+            "date": date,
+            "adresse_livraison": adresse_liv,
+            "articles": normalized
+        }
 # ---------------------------
 # NEW: Table extraction from Vision (for BDC structured table with 8 fixed columns)
 # ---------------------------
@@ -1305,4 +1304,5 @@ if st.button("🚪 Déconnexion"):
         pass
 
 # End of file
+
 
