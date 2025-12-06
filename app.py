@@ -345,7 +345,7 @@ def invoice_pipeline(image_bytes: bytes):
 def extract_table_bdc_8cols(text: str):
     """
     Extraction robuste des 8 colonnes :
-    Ref four | Code ean | Désignation | PCB | Nb colis | Qté | P.A fact | T.TVA
+    Désignation | Qté 
     Fonctionne même si OCR casse les lignes.
     """
     lines = [l.strip() for l in text.split("\n") if l.strip()]
@@ -1129,7 +1129,7 @@ if st.session_state.mode == "bdc":
             st.markdown("<div class='card'>", unsafe_allow_html=True)
             st.subheader("Articles détectés (modifiable)")
 
-            expected_cols = ["Ref four.", "Code ean", "Désignation", "PCB", "Nb colis", "Qté", "P.A fact.", "T.TVA"]
+            expected_cols = ["Désignation", "Qté"]
 
             # Try automatic extraction of the 8-column table
             with st.spinner("Extraction automatique du tableau..."):
@@ -1167,15 +1167,9 @@ if st.session_state.mode == "bdc":
 
             # Use data_editor with explicit column config
             column_config = {
-                "Ref four.": st.column_config.TextColumn("Ref four."),
-                "Code ean": st.column_config.TextColumn("Code ean"),
                 "Désignation": st.column_config.TextColumn("Désignation"),
-                "PCB": st.column_config.NumberColumn("PCB", min_value=0),
-                "Nb colis": st.column_config.NumberColumn("Nb colis", min_value=0),
-                "Qté": st.column_config.NumberColumn("Qté", min_value=0),
-                "P.A fact.": st.column_config.TextColumn("P.A fact."),
-                "T.TVA": st.column_config.TextColumn("T.TVA")
-            }
+                "Qté": st.column_config.NumberColumn("Qté", min_value=0)
+                           }
 
             edited_bdc = st.data_editor(
                 df_bdc_table,
@@ -1253,7 +1247,10 @@ if st.session_state.mode == "bdc":
                     today_str = datetime.now().strftime("%d/%m/%Y")
 
                     for _, row in edited.iterrows():
-                        row_vals = [row.get(c, "") for c in expected_cols]
+                        row_vals = [
+                            row.get("Désignation", ""),
+                            row.get("Qté", "")
+                        ]
                         # optionally add metadata columns if you want (numero, client, date, adresse, user)
                         final_row = [
                             numero_val or "",
@@ -1304,5 +1301,6 @@ if st.button("🚪 Déconnexion"):
         pass
 
 # End of file
+
 
 
