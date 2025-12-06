@@ -349,35 +349,18 @@ def invoice_pipeline(image_bytes: bytes):
     return extract_invoice_info(raw)
 
 # ---------------------------
-# Google Sheets Functions
+# Google Sheets Functions (MIS À JOUR)
 # ---------------------------
-
-def get_sheets_service():
-    """Crée un service Google Sheets"""
+def get_bdc_worksheet():
+    """Obtient la feuille BDC"""
     if "gcp_sheet" in st.secrets:
         sa_info = dict(st.secrets["gcp_sheet"])
     elif "google_service_account" in st.secrets:
         sa_info = dict(st.secrets["google_service_account"])
     else:
-        raise FileNotFoundError("Credentials Google Sheets introuvables dans st.secrets")
+        return None
     
-    creds = SA_Credentials.from_service_account_info(
-        sa_info, 
-        scopes=["https://www.googleapis.com/auth/spreadsheets"]
-    )
-    service = build("sheets", "v4", credentials=creds)
-    return service
-
-def get_bdc_worksheet():
-    """Obtient la feuille BDC spécifique"""
     try:
-        if "gcp_sheet" in st.secrets:
-            sa_info = dict(st.secrets["gcp_sheet"])
-        elif "google_service_account" in st.secrets:
-            sa_info = dict(st.secrets["google_service_account"])
-        else:
-            return None
-        
         client = gspread.service_account_from_dict(sa_info)
         sh = client.open_by_key(BDC_SHEET_ID)
         
@@ -388,8 +371,108 @@ def get_bdc_worksheet():
         
         # Fallback à la première feuille
         return sh.sheet1
-    except Exception:
+    except Exception as e:
+        st.error(f"Erreur de connexion Google Sheets: {str(e)}")
         return None
+
+def is_duplicate_entry(ws, numero_bdc, client_nom, date_bdc, designation, qte):
+    """
+    Vérifie si une entrée similaire existe déjà dans la feuille
+    pour éviter les doublons
+    """
+    try:
+        # Récupérer toutes les données existantes
+        all_values = ws.get_all_values()
+        
+        if not all_values:
+            return False
+            
+        # Vérifier chaque ligne existante
+        for row in all_values:
+            # Vérifier les critères principaux pour identifier un doublon
+            if len(row) >= 6:
+                existing_numero = row[0] if len(row) > 0 else ""
+                existing_client = row[1] if len(row) > 1 else ""
+                existing_date = row[2] if len(row) > 2 else ""
+                existing_designation = row[4] if len(row) > 4 else ""
+                existing_qte = row[5] if len(row) > 5 else ""
+                
+                # Comparer les valeurs (avec une certaine tolérance)
+                if (existing_numero == str(numero_bdc) and
+                    existing_client == str(client_nom) and
+                    existing_date == str(date_bdc) and
+                    existing_designation.strip().lower() == str(designation).strip().lower() and
+                    abs(float(existing_qte) - float(qte)) < 0.001):
+                    return True
+                    
+        return False
+    except Exception as e:
+        st.warning(f"Erreur lors de la vérification des doublons: {str(e)}")
+        return False
+
+def save_to_sheets_without_duplicates(ws, data_to_save):
+    """
+    Enregistre les données dans Google Sheets en évitant les doublons
+    """
+    try:
+        # Récupérer les données existantes
+        all_values = ws.get_all_values()
+        existing_data = []
+        
+        if all_values:
+            # Convertir en format similaire pour comparaison
+            for row in all_values:
+                if len(row) >= 6:
+                    existing_data.append({
+                        'numero': row[0] if len(row) > 0 else "",
+                        'client': row[1] if len(row) > 1 else "",
+                        'date': row[2] if len(row) > 2 else "",
+                        'adresse': row[3] if len(row) > 3 else "",
+                        'designation': row[4] if len(row) > 4 else "",
+                        'qte': row[5] if len(row) > 5 else ""
+                    })
+        
+        # Filtrer les nouvelles données pour enlever les doublons
+        new_data_filtered = []
+        duplicates_found = 0
+        
+        for data in data_to_save:
+            is_duplicate = False
+            
+            # Vérifier dans les données existantes
+            for existing in existing_data:
+                if (existing['numero'] == data[0] and
+                    existing['client'] == data[1] and
+                    existing['date'] == data[2] and
+                    existing['designation'].strip().lower() == data[4].strip().lower() and
+                    abs(float(existing['qte']) - float(data[5])) < 0.001):
+                    is_duplicate = True
+                    duplicates_found += 1
+                    break
+            
+            # Vérifier aussi dans les nouvelles données déjà ajoutées
+            if not is_duplicate:
+                for new in new_data_filtered:
+                    if (new[0] == data[0] and
+                        new[1] == data[1] and
+                        new[2] == data[2] and
+                        new[4].strip().lower() == data[4].strip().lower() and
+                        abs(float(new[5]) - float(data[5])) < 0.001):
+                        is_duplicate = True
+                        duplicates_found += 1
+                        break
+            
+            if not is_duplicate:
+                new_data_filtered.append(data)
+        
+        # Ajouter seulement les nouvelles données uniques
+        if new_data_filtered:
+            ws.append_rows(new_data_filtered)
+            
+        return len(new_data_filtered), duplicates_found
+        
+    except Exception as e:
+        raise Exception(f"Erreur lors de l'enregistrement: {str(e)}")
 
 # ---------------------------
 # Session State
@@ -402,6 +485,10 @@ if "mode" not in st.session_state:
     st.session_state.mode = None
 if "scan_index" not in st.session_state:
     st.session_state.scan_index = 0
+if "last_uploaded_file" not in st.session_state:
+    st.session_state.last_uploaded_file = None
+if "last_saved_data" not in st.session_state:
+    st.session_state.last_saved_data = None
 
 # ---------------------------
 # Header
@@ -467,289 +554,170 @@ if st.session_state.mode == "bdc":
     uploaded = st.file_uploader("Téléchargez l'image du BDC", type=["jpg", "jpeg", "png"])
     
     if uploaded:
-        try:
-            img = Image.open(uploaded)
-            st.image(img, caption="Aperçu du BDC", use_column_width=True)
-            
-            # Convertir en bytes
-            buf = BytesIO()
-            img.save(buf, format="JPEG")
-            img_bytes = buf.getvalue()
-            
-            # Traitement OCR
-            with st.spinner("Traitement OCR en cours..."):
-                try:
-                    result = bdc_pipeline(img_bytes)
-                    
-                    # Afficher les résultats
-                    st.markdown("</div>", unsafe_allow_html=True)
-                    
-                    # Section informations détectées
-                    st.markdown("<div class='card'>", unsafe_allow_html=True)
-                    st.markdown("<h4>📋 Informations détectées</h4>", unsafe_allow_html=True)
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        numero_val = st.text_input("Numéro BDC", value=result.get("numero", "25011956"), key="numero_bdc")
-                        client_val = st.text_input("Client/Facturation", value=result.get("client", "S2M"), key="client_bdc")
-                    
-                    with col2:
-                        date_val = st.text_input("Date émission", value=result.get("date", "04/11/2025"), key="date_bdc")
-                        adresse_val = st.text_input("Adresse livraison", value=result.get("adresse_livraison", "SCORE TALATAMATY"), key="adresse_bdc")
-                    
-                    st.markdown("</div>", unsafe_allow_html=True)
-                    
-                    # Section articles
-                    st.markdown("<div class='card'>", unsafe_allow_html=True)
-                    st.markdown("<h4>🛒 Articles détectés</h4>", unsafe_allow_html=True)
-                    
-                    articles = result.get("articles", [])
-                    if articles:
-                        df = pd.DataFrame(articles)
-                        edited_df = st.data_editor(
-                            df,
-                            num_rows="dynamic",
-                            column_config={
-                                "Désignation": st.column_config.TextColumn("Désignation", width="large"),
-                                "Qté": st.column_config.NumberColumn("Qté", format="%.3f", width="small")
-                            },
-                            use_container_width=True,
-                            key="bdc_articles_editor"
-                        )
-                    else:
-                        st.warning("Aucun article détecté. Ajoutez-les manuellement.")
-                        df = pd.DataFrame(columns=["Désignation", "Qté"])
-                        edited_df = st.data_editor(
-                            df,
-                            num_rows="dynamic",
-                            column_config={
-                                "Désignation": st.column_config.TextColumn("Désignation"),
-                                "Qté": st.column_config.NumberColumn("Qté", format="%.3f")
-                            },
-                            use_container_width=True,
-                            key="bdc_articles_editor_empty"
-                        )
-                    
-                    # Bouton ajouter ligne
-                    if st.button("➕ Ajouter une ligne", key="add_line_bdc"):
-                        new_row = {"Désignation": "", "Qté": ""}
-                        edited_df = pd.concat([edited_df, pd.DataFrame([new_row])], ignore_index=True)
-                        st.session_state["edited_bdc_df"] = edited_df
-                        st.rerun()
-                    
-                    st.session_state["edited_bdc_df"] = edited_df
-                    st.markdown("</div>", unsafe_allow_html=True)
-                    
-                    # Section OCR brut
-                    st.markdown("<div class='card'>", unsafe_allow_html=True)
-                    with st.expander("📄 Voir le texte OCR brut"):
-                        st.text_area("Texte OCR", value=result.get("raw", ""), height=200, key="ocr_text")
-                    st.markdown("</div>", unsafe_allow_html=True)
-                    
-                    # ---------------------------
-                    # SECTION EXPORT GOOGLE SHEETS (NOUVELLE VERSION)
-                    # ---------------------------
-                    st.markdown("<div class='card'>", unsafe_allow_html=True)
-                    st.markdown("<h4>📤 Export vers Google Sheets</h4>", unsafe_allow_html=True)
-                    
-                    # Sélecteur de ligne de départ
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        start_row = st.number_input(
-                            "Ligne de départ", 
-                            min_value=1, 
-                            value=205, 
-                            step=1,
-                            key="start_row_bdc",
-                            help="Numéro de ligne où commencer l'insertion (ex: 205)"
-                        )
-                    with col2:
-                        overwrite = st.checkbox(
-                            "Écraser les données existantes", 
-                            value=True,
-                            key="overwrite_bdc",
-                            help="Efface les données existantes dans la plage sélectionnée"
-                        )
-                    
-                    # Obtenir la feuille
-                    try:
-                        ws = get_bdc_worksheet()
-                        sheet_available = ws is not None
-                    except Exception:
-                        sheet_available = False
-                        ws = None
-                    
-                    if not sheet_available:
-                        st.warning("⚠️ Google Sheets non configuré. Configurez les credentials dans les secrets.")
-                        st.info("Ajoutez vos credentials dans .streamlit/secrets.toml")
-                    else:
-                        if st.button("💾 Enregistrer dans Google Sheets", type="primary", key="save_bdc"):
-                            try:
-                                # Préparer les données
-                                data_to_save = []
-                                for _, row in edited_df.iterrows():
-                                    desig = str(row.get("Désignation", "")).strip()
-                                    qte = str(row.get("Qté", "")).strip()
-                                    
-                                    if desig and qte:
-                                        # Convertir la quantité en format numérique propre
-                                        try:
-                                            qte_clean = float(qte.replace(",", "."))
-                                        except:
-                                            qte_clean = qte
-                                        
-                                        data_to_save.append([
-                                            numero_val or "",
-                                            client_val or "",
-                                            date_val or "",
-                                            adresse_val or "",
-                                            desig,
-                                            qte_clean,
-                                            datetime.now().strftime("%d/%m/%Y %H:%M"),
-                                            st.session_state.user_nom
-                                        ])
-                                
-                                if not data_to_save:
-                                    st.warning("⚠️ Aucune donnée valide à enregistrer")
-                                else:
-                                    with st.spinner(f"Enregistrement sur les lignes {start_row} à {start_row + len(data_to_save) - 1}..."):
-                                        try:
-                                            # 1. Préparer le service Sheets API
-                                            if "gcp_sheet" in st.secrets:
-                                                sa_info = dict(st.secrets["gcp_sheet"])
-                                            elif "google_service_account" in st.secrets:
-                                                sa_info = dict(st.secrets["google_service_account"])
-                                            else:
-                                                raise Exception("❌ Credentials Google Sheets manquants")
-                                            
-                                            creds = SA_Credentials.from_service_account_info(
-                                                sa_info, 
-                                                scopes=["https://www.googleapis.com/auth/spreadsheets"]
-                                            )
-                                            service = build("sheets", "v4", credentials=creds)
-                                            
-                                            # 2. Écrire les données à la position spécifiée
-                                            range_name = f"A{start_row}"
-                                            
-                                            body = {
-                                                "values": data_to_save,
-                                                "majorDimension": "ROWS"
-                                            }
-                                            
-                                            # Mettre à jour les valeurs
-                                            result = service.spreadsheets().values().update(
-                                                spreadsheetId=BDC_SHEET_ID,
-                                                range=range_name,
-                                                valueInputOption="USER_ENTERED",
-                                                body=body
-                                            ).execute()
-                                            
-                                            updated_cells = result.get("updatedCells", 0)
-                                            
-                                            st.success(f"✅ {len(data_to_save)} lignes enregistrées avec succès!")
-                                            st.info(f"📍 Emplacement: Lignes {start_row} à {start_row + len(data_to_save) - 1}")
-                                            st.info(f"👤 Enregistré par: {st.session_state.user_nom}")
-                                            
-                                            # 3. Appliquer la coloration alternée
-                                            try:
-                                                requests = []
-                                                for i in range(len(data_to_save)):
-                                                    row_idx = start_row + i - 1  # -1 car index 0-based
-                                                    
-                                                    # Alternance de couleurs basée sur l'index global
-                                                    color_index = st.session_state.scan_index + i
-                                                    
-                                                    if color_index % 2 == 0:
-                                                        # Ligne paire : Blanc
-                                                        bg_color = {"red": 1.0, "green": 1.0, "blue": 1.0}
-                                                        text_color = {"red": 0.0, "green": 0.0, "blue": 0.0}
-                                                    else:
-                                                        # Ligne impaire : Bleu pétrole
-                                                        bg_color = {"red": 15/255.0, "green": 58/255.0, "blue": 69/255.0}
-                                                        text_color = {"red": 1.0, "green": 1.0, "blue": 1.0}
-                                                    
-                                                    requests.append({
-                                                        "repeatCell": {
-                                                            "range": {
-                                                                "sheetId": ws.id,
-                                                                "startRowIndex": row_idx,
-                                                                "endRowIndex": row_idx + 1,
-                                                                "startColumnIndex": 0,
-                                                                "endColumnIndex": 8  # 8 colonnes (A-H)
-                                                            },
-                                                            "cell": {
-                                                                "userEnteredFormat": {
-                                                                    "backgroundColor": bg_color,
-                                                                    "textFormat": {
-                                                                        "foregroundColor": text_color
-                                                                    }
-                                                                }
-                                                            },
-                                                            "fields": "userEnteredFormat(backgroundColor,textFormat)"
-                                                        }
-                                                    })
-                                                
-                                                # Exécuter les requêtes de formatage
-                                                if requests:
-                                                    service.spreadsheets().batchUpdate(
-                                                        spreadsheetId=BDC_SHEET_ID,
-                                                        body={"requests": requests}
-                                                    ).execute()
-                                                
-                                                st.info("🎨 Coloration alternée appliquée")
-                                                
-                                            except Exception as color_error:
-                                                st.warning(f"⚠️ Formatage non appliqué: {str(color_error)}")
-                                            
-                                            # 4. Mettre à jour l'index de scan
-                                            st.session_state.scan_index += len(data_to_save)
-                                            
-                                            # 5. Afficher un aperçu des données envoyées
-                                            with st.expander("📋 Aperçu des données envoyées"):
-                                                preview_df = pd.DataFrame(
-                                                    data_to_save,
-                                                    columns=["Numéro", "Client", "Date", "Adresse", "Désignation", "Qté", "Date envoi", "Utilisateur"]
-                                                )
-                                                st.dataframe(preview_df)
-                                            
-                                        except Exception as api_error:
-                                            # Fallback: utiliser gspread si l'API échoue
-                                            st.warning("Méthode API échouée, tentative avec gspread...")
-                                            
-                                            try:
-                                                # Lire toutes les données existantes
-                                                all_data = ws.get_all_values()
-                                                
-                                                # S'assurer qu'il y a assez de lignes
-                                                if start_row > len(all_data):
-                                                    # Ajouter des lignes vides
-                                                    rows_needed = start_row - len(all_data)
-                                                    empty_rows = [[""] * 8 for _ in range(rows_needed)]
-                                                    ws.append_rows(empty_rows, value_input_option="USER_ENTERED")
-                                                
-                                                # Mettre à jour ligne par ligne
-                                                for i, row_data in enumerate(data_to_save):
-                                                    row_num = start_row + i
-                                                    # Formater la plage (ex: "A205:H205")
-                                                    cell_range = f"A{row_num}:H{row_num}"
-                                                    ws.update(cell_range, [row_data], value_input_option="USER_ENTERED")
-                                                
-                                                st.success(f"✅ {len(data_to_save)} lignes enregistrées (méthode gspread)")
-                                                st.info(f"📍 Lignes {start_row} à {start_row + len(data_to_save) - 1}")
-                                                
-                                            except Exception as gspread_error:
-                                                st.error(f"❌ Échec complet: {str(gspread_error)}")
-                                                
-                            except Exception as e:
-                                st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
-                    
-                    st.markdown("</div>", unsafe_allow_html=True)
-                    
-                except Exception as e:
-                    st.error(f"❌ Erreur OCR: {str(e)}")
+        # Vérifier si c'est un nouveau fichier
+        file_hash = f"{uploaded.name}_{uploaded.size}"
         
-        except Exception as e:
-            st.error(f"❌ Erreur de traitement d'image: {str(e)}")
+        if (st.session_state.last_uploaded_file != file_hash or 
+            st.session_state.last_saved_data is None):
+            # Nouveau fichier ou données non sauvegardées
+            try:
+                img = Image.open(uploaded)
+                st.image(img, caption="Aperçu du BDC", use_column_width=True)
+                
+                # Convertir en bytes
+                buf = BytesIO()
+                img.save(buf, format="JPEG")
+                img_bytes = buf.getvalue()
+                
+                # Traitement OCR
+                with st.spinner("Traitement OCR en cours..."):
+                    try:
+                        result = bdc_pipeline(img_bytes)
+                        
+                        # Stocker les résultats dans session state
+                        st.session_state.current_result = result
+                        st.session_state.last_uploaded_file = file_hash
+                        
+                        # Afficher les résultats
+                        st.markdown("</div>", unsafe_allow_html=True)
+                        
+                        # Section informations détectées
+                        st.markdown("<div class='card'>", unsafe_allow_html=True)
+                        st.markdown("<h4>📋 Informations détectées</h4>", unsafe_allow_html=True)
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            numero = st.text_input("Numéro BDC", value=result.get("numero", "25011956"), key="numero_bdc")
+                            client = st.text_input("Client/Facturation", value=result.get("client", "S2M"), key="client_bdc")
+                        
+                        with col2:
+                            date = st.text_input("Date émission", value=result.get("date", "04/11/2025"), key="date_bdc")
+                            adresse = st.text_input("Adresse livraison", value=result.get("adresse_livraison", "SCORE TALATAMATY"), key="adresse_bdc")
+                        
+                        st.markdown("</div>", unsafe_allow_html=True)
+                        
+                        # Section articles
+                        st.markdown("<div class='card'>", unsafe_allow_html=True)
+                        st.markdown("<h4>🛒 Articles détectés</h4>", unsafe_allow_html=True)
+                        
+                        articles = result.get("articles", [])
+                        if articles:
+                            df = pd.DataFrame(articles)
+                            st.session_state.current_df = df.copy()
+                            edited_df = st.data_editor(
+                                df,
+                                num_rows="dynamic",
+                                column_config={
+                                    "Désignation": st.column_config.TextColumn("Désignation", width="large"),
+                                    "Qté": st.column_config.NumberColumn("Qté", format="%.3f", width="small")
+                                },
+                                use_container_width=True,
+                                key="articles_editor"
+                            )
+                            st.session_state.edited_df = edited_df
+                        else:
+                            st.warning("Aucun article détecté. Ajoutez-les manuellement.")
+                            df = pd.DataFrame(columns=["Désignation", "Qté"])
+                            edited_df = st.data_editor(
+                                df,
+                                num_rows="dynamic",
+                                column_config={
+                                    "Désignation": st.column_config.TextColumn("Désignation"),
+                                    "Qté": st.column_config.NumberColumn("Qté", format="%.3f")
+                                },
+                                use_container_width=True,
+                                key="articles_editor_empty"
+                            )
+                            st.session_state.edited_df = edited_df
+                        
+                        st.markdown("</div>", unsafe_allow_html=True)
+                        
+                        # Section OCR brut
+                        st.markdown("<div class='card'>", unsafe_allow_html=True)
+                        with st.expander("📄 Voir le texte OCR brut"):
+                            st.text_area("Texte OCR", value=result.get("raw", ""), height=200, key="ocr_raw")
+                        st.markdown("</div>", unsafe_allow_html=True)
+                        
+                        # Section export Google Sheets
+                        st.markdown("<div class='card'>", unsafe_allow_html=True)
+                        st.markdown("<h4>📤 Export vers Google Sheets</h4>", unsafe_allow_html=True)
+                        
+                        ws = get_bdc_worksheet()
+                        
+                        if ws is None:
+                            st.warning("⚠️ Google Sheets non configuré. Configurez les credentials dans les secrets.")
+                        else:
+                            # Bouton avec état
+                            save_button_key = f"save_button_{file_hash}"
+                            
+                            # Vérifier si déjà sauvegardé
+                            already_saved = st.session_state.last_saved_data == file_hash
+                            
+                            if already_saved:
+                                st.success("✅ Ce BDC a déjà été enregistré avec succuis!")
+                                st.info("Pour enregistrer à nouveau, téléchargez un nouveau fichier.")
+                            else:
+                                if st.button("💾 Enregistrer dans Google Sheets", key=save_button_key, disabled=already_saved):
+                                    with st.spinner("Enregistrement en cours..."):
+                                        try:
+                                            # Préparer les données
+                                            data_to_save = []
+                                            current_timestamp = datetime.now().strftime("%d/%m/%Y %H:%M")
+                                            
+                                            # Récupérer les données éditées
+                                            if 'edited_df' in locals():
+                                                df_to_save = edited_df
+                                            elif hasattr(st.session_state, 'edited_df'):
+                                                df_to_save = st.session_state.edited_df
+                                            else:
+                                                df_to_save = pd.DataFrame(articles)
+                                            
+                                            for _, row in df_to_save.iterrows():
+                                                if str(row["Désignation"]).strip() and str(row["Qté"]).strip():
+                                                    data_to_save.append([
+                                                        numero,
+                                                        client,
+                                                        date,
+                                                        adresse,
+                                                        str(row["Désignation"]).strip(),
+                                                        str(row["Qté"]).strip(),
+                                                        current_timestamp,
+                                                        st.session_state.user_nom
+                                                    ])
+                                            
+                                            if data_to_save:
+                                                # Enregistrer en évitant les doublons
+                                                saved_count, duplicate_count = save_to_sheets_without_duplicates(ws, data_to_save)
+                                                
+                                                if saved_count > 0:
+                                                    st.session_state.last_saved_data = file_hash
+                                                    st.session_state.scan_index += 1
+                                                    st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succuis!")
+                                                    
+                                                    if duplicate_count > 0:
+                                                        st.info(f"⚠️ {duplicate_count} ligne(s) en doublon non ajoutée(s)")
+                                                    
+                                                    st.info(f"👤 Enregistré par: {st.session_state.user_nom} à {current_timestamp}")
+                                                    st.rerun()
+                                                else:
+                                                    st.warning("⚠️ Toutes les données étaient déjà présentes dans la feuille.")
+                                            else:
+                                                st.warning("⚠️ Aucune donnée valide à enregistrer")
+                                                
+                                        except Exception as e:
+                                            st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
+                        
+                        st.markdown("</div>", unsafe_allow_html=True)
+                        
+                    except Exception as e:
+                        st.error(f"❌ Erreur OCR: {str(e)}")
+            
+            except Exception as e:
+                st.error(f"❌ Erreur de traitement d'image: {str(e)}")
+        else:
+            # Fichier déjà traité
+            st.info("📄 Ce fichier a déjà été traité. Si vous voulez ré-analyser, téléchargez à nouveau.")
+            st.markdown("</div>", unsafe_allow_html=True)
     
     else:
         st.info("📤 Veuillez télécharger une image de bon de commande")
@@ -758,15 +726,19 @@ if st.session_state.mode == "bdc":
     # Boutons de navigation
     col1, col2, col3 = st.columns([1, 2, 1])
     with col1:
-        if st.button("⬅️ Retour au menu", key="back_from_bdc"):
+        if st.button("⬅️ Retour au menu"):
             st.session_state.mode = None
+            st.session_state.last_uploaded_file = None
+            st.session_state.last_saved_data = None
             st.rerun()
     
     with col3:
-        if st.button("🚪 Déconnexion", key="logout_from_bdc"):
+        if st.button("🚪 Déconnexion"):
             st.session_state.auth = False
             st.session_state.user_nom = ""
             st.session_state.mode = None
+            st.session_state.last_uploaded_file = None
+            st.session_state.last_saved_data = None
             st.rerun()
 
 # ---------------------------
@@ -778,7 +750,7 @@ elif st.session_state.mode == "facture":
     
     st.info("Mode facture - Version simplifiée")
     
-    uploaded = st.file_uploader("Téléchargez l'image de facture", type=["jpg", "jpeg", "png"], key="facture_uploader")
+    uploaded = st.file_uploader("Téléchargez l'image de facture", type=["jpg", "jpeg", "png"])
     
     if uploaded:
         img = Image.open(uploaded)
@@ -789,12 +761,12 @@ elif st.session_state.mode == "facture":
     # Boutons de navigation
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("⬅️ Retour au menu", key="back_from_facture"):
+        if st.button("⬅️ Retour au menu"):
             st.session_state.mode = None
             st.rerun()
     
     with col2:
-        if st.button("📝 Aller aux BDC", key="goto_bdc_from_facture"):
+        if st.button("📝 Aller aux BDC"):
             st.session_state.mode = "bdc"
             st.rerun()
 
