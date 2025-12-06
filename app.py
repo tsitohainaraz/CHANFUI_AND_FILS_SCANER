@@ -1,13 +1,13 @@
-# app_final.py
-# Chan Foui et Fils — OCR Facture PRO (UI premium, dual mode)
-# Mode Facture et Mode Bon de Commande
+# app_final_simple.py
+# Chan Foui et Fils — OCR Facture PRO
+# Mode Facture et Mode BDC avec design original
 
 import streamlit as st
 import numpy as np
 import re
 import time
 import os
-import json
+import base64
 from datetime import datetime
 from io import BytesIO
 from PIL import Image, ImageFilter, ImageOps
@@ -61,21 +61,9 @@ PALETTE = {
     "ivory": "#FAF5EA",
     "muted": "#7a8a8f",
     "card": "#ffffff",
-    "soft": "#f6f2ec",
-    "success": "#28a745",
-    "warning": "#ffc107",
-    "danger": "#dc3545"
+    "soft": "#f6f2ec"
 }
 
-COLORS = [
-    {"red": 0.07, "green": 0.06, "blue": 0.06},
-    {"red": 0.83, "green": 0.72, "blue": 0.45},
-    {"red": 0.88, "green": 0.84, "blue": 0.78},
-]
-
-# ---------------------------
-# Premium Styles
-# ---------------------------
 st.markdown(
     f"""
     <style>
@@ -86,237 +74,26 @@ st.markdown(
         --muted: {PALETTE['muted']};
         --card: {PALETTE['card']};
         --soft: {PALETTE['soft']};
-        --success: {PALETTE['success']};
-        --warning: {PALETTE['warning']};
-        --danger: {PALETTE['danger']};
     }}
-    
     html, body, [data-testid='stAppViewContainer'] {{
         background: linear-gradient(180deg, var(--ivory), #fffdf9);
         color: var(--petrol);
         font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
     }}
-    
-    /* Header Centered */
-    .header-container {{
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
-        padding: 1rem 0;
-        margin-bottom: 1.5rem;
-    }}
-    
-    .brand-title {{
-        font-family: Georgia, serif;
-        font-size: 2.2rem;
-        font-weight: 700;
-        color: var(--petrol);
-        margin: 0;
-        letter-spacing: -0.5px;
-    }}
-    
-    .brand-sub {{
-        color: var(--muted);
-        font-size: 0.9rem;
-        margin-top: 0.25rem;
-        font-weight: 400;
-    }}
-    
-    /* Mode Selector */
-    .mode-selector {{
-        display: flex;
-        justify-content: center;
-        gap: 1rem;
-        margin: 2rem 0;
-    }}
-    
-    .mode-card {{
+    .card {{
+        border-radius:14px;
         background: var(--card);
-        border-radius: 16px;
-        padding: 2rem;
-        text-align: center;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        border: 2px solid transparent;
-        box-shadow: 0 8px 25px rgba(15, 58, 69, 0.08);
-        min-width: 200px;
+        padding:18px;
+        box-shadow: 0 10px 30px rgba(15,58,69,0.04);
+        border: 1px solid rgba(15,58,69,0.03);
+        margin-bottom:14px;
     }}
-    
-    .mode-card:hover {{
-        transform: translateY(-5px);
-        border-color: var(--gold);
-        box-shadow: 0 12px 35px rgba(15, 58, 69, 0.15);
-    }}
-    
-    .mode-card.active {{
-        border-color: var(--gold);
-        background: linear-gradient(135deg, rgba(212, 175, 55, 0.05), rgba(15, 58, 69, 0.03));
-    }}
-    
-    .mode-icon {{
-        font-size: 2.5rem;
-        margin-bottom: 1rem;
-        color: var(--petrol);
-    }}
-    
-    .mode-title {{
-        font-weight: 600;
-        color: var(--petrol);
-        margin-bottom: 0.5rem;
-    }}
-    
-    .mode-desc {{
-        color: var(--muted);
-        font-size: 0.85rem;
-    }}
-    
-    /* Cards */
-    .premium-card {{
-        border-radius: 18px;
-        background: var(--card);
-        padding: 2rem;
-        box-shadow: 0 15px 40px rgba(15, 58, 69, 0.08);
-        border: 1px solid rgba(15, 58, 69, 0.05);
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-        margin-bottom: 1.5rem;
-    }}
-    
-    .premium-card:hover {{
-        transform: translateY(-5px);
-        box-shadow: 0 20px 50px rgba(15, 58, 69, 0.12);
-    }}
-    
-    .card-title {{
-        color: var(--petrol);
-        font-weight: 600;
-        margin-bottom: 1.5rem;
-        font-size: 1.4rem;
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-    }}
-    
-    /* Buttons */
-    .stButton > button {{
-        background: linear-gradient(135deg, var(--gold), #b58f2d);
+    .stButton>button {{
+        background: linear-gradient(180deg, var(--gold), #b58f2d);
         color: #081214;
-        font-weight: 700;
-        border-radius: 12px;
-        padding: 0.75rem 1.5rem;
-        border: none;
-        box-shadow: 0 6px 20px rgba(212, 175, 55, 0.25);
-        transition: all 0.3s ease;
-        font-size: 0.95rem;
-    }}
-    
-    .stButton > button:hover {{
-        transform: translateY(-2px);
-        box-shadow: 0 10px 25px rgba(212, 175, 55, 0.35);
-    }}
-    
-    .btn-secondary {{
-        background: linear-gradient(135deg, var(--soft), #e8e2d8) !important;
-        color: var(--petrol) !important;
-        box-shadow: 0 4px 15px rgba(15, 58, 69, 0.1) !important;
-    }}
-    
-    .btn-success {{
-        background: linear-gradient(135deg, var(--success), #218838) !important;
-        color: white !important;
-    }}
-    
-    /* Status Badges */
-    .status-badge {{
-        display: inline-flex;
-        align-items: center;
-        padding: 0.25rem 0.75rem;
-        border-radius: 20px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        margin-left: 0.5rem;
-    }}
-    
-    .status-active {{
-        background: rgba(40, 167, 69, 0.1);
-        color: var(--success);
-    }}
-    
-    .status-inactive {{
-        background: rgba(108, 117, 125, 0.1);
-        color: #6c757d;
-    }}
-    
-    /* Progress Bars */
-    .stProgress > div > div > div > div {{
-        background: linear-gradient(90deg, var(--gold), #b58f2d);
-    }}
-    
-    /* Data Editor */
-    [data-testid="stDataFrame"] {{
-        border-radius: 12px;
-        overflow: hidden;
-        border: 1px solid rgba(15, 58, 69, 0.1);
-    }}
-    
-    /* Footer */
-    .footer {{
-        text-align: center;
-        color: var(--muted);
-        font-size: 0.8rem;
-        padding: 1.5rem;
-        margin-top: 3rem;
-        border-top: 1px solid rgba(15, 58, 69, 0.1);
-    }}
-    
-    /* File Upload */
-    [data-testid="stFileUploader"] {{
-        border: 2px dashed rgba(15, 58, 69, 0.2);
-        border-radius: 12px;
-        padding: 2rem;
-        background: rgba(15, 58, 69, 0.02);
-    }}
-    
-    /* Responsive */
-    @media (max-width: 768px) {{
-        .mode-selector {{
-            flex-direction: column;
-            align-items: center;
-        }}
-        
-        .mode-card {{
-            width: 100%;
-            max-width: 300px;
-        }}
-        
-        .brand-title {{
-            font-size: 1.8rem;
-        }}
-    }}
-    
-    /* Animations */
-    @keyframes fadeIn {{
-        from {{ opacity: 0; transform: translateY(10px); }}
-        to {{ opacity: 1; transform: translateY(0); }}
-    }}
-    
-    .fade-in {{
-        animation: fadeIn 0.5s ease-out;
-    }}
-    
-    @keyframes shimmer {{
-        0% {{ background-position: -200% 0; }}
-        100% {{ background-position: 200% 0; }}
-    }}
-    
-    .shimmer {{
-        background: linear-gradient(90deg, 
-            rgba(212, 175, 55, 0.05), 
-            rgba(15, 58, 69, 0.03), 
-            rgba(212, 175, 55, 0.05));
-        background-size: 200% 100%;
-        animation: shimmer 3s linear infinite;
+        font-weight:700;
+        border-radius:10px;
+        padding:8px 12px;
     }}
     </style>
     """,
@@ -434,7 +211,6 @@ def extract_invoice_items(text: str):
     items = []
     lines = [l.strip() for l in text.split("\n") if l.strip()]
     
-    # Pattern pour détecter les articles de facture
     pattern = re.compile(r"(.+?(?:75\s*cls?|75\s*cl|75cl|75))\s+\d+\s+\d+\s+(\d+)", flags=re.I)
     
     for line in lines:
@@ -445,7 +221,6 @@ def extract_invoice_items(text: str):
             name = re.sub(r"\s{2,}", " ", name)
             items.append({"article": name, "bouteilles": nb_btls})
     
-    # Fallback pattern
     if not items:
         for line in lines:
             if "75" in line or "cls" in line.lower():
@@ -459,7 +234,6 @@ def extract_invoice_items(text: str):
     return items
 
 def invoice_pipeline(image_bytes: bytes):
-    """Pipeline complet pour traiter une facture"""
     cleaned = preprocess_image(image_bytes)
     raw = google_vision_ocr(cleaned)
     raw = clean_text(raw)
@@ -542,7 +316,6 @@ def extract_designation_qte_from_ocr(text: str):
     items = []
     lines = [l.strip() for l in text.split('\n') if l.strip()]
     
-    # Chercher la table dans le texte OCR
     table_start = -1
     for i, line in enumerate(lines):
         if any(keyword in line.lower() for keyword in ["désignation", "designation", "qte", "qté"]) or \
@@ -609,7 +382,6 @@ def extract_designation_qte_from_ocr(text: str):
     return items
 
 def bdc_pipeline(image_bytes: bytes):
-    """Pipeline complet pour traiter un BDC"""
     cleaned = preprocess_image(image_bytes)
     raw = google_vision_ocr(cleaned)
     raw = clean_text(raw)
@@ -627,7 +399,6 @@ def bdc_pipeline(image_bytes: bytes):
 # Google Sheets Functions
 # ---------------------------
 def get_bdc_worksheet():
-    """Obtient la feuille BDC"""
     if "gcp_sheet" in st.secrets:
         sa_info = dict(st.secrets["gcp_sheet"])
     elif "google_service_account" in st.secrets:
@@ -648,7 +419,6 @@ def get_bdc_worksheet():
         return None
 
 def get_invoice_worksheet():
-    """Obtient la feuille Facture"""
     if "gcp_sheet" in st.secrets:
         sa_info = dict(st.secrets["gcp_sheet"])
     elif "google_service_account" in st.secrets:
@@ -668,14 +438,12 @@ def get_invoice_worksheet():
     except Exception:
         return None
 
-def is_duplicate_invoice(ws, invoice_data):
-    """Vérifie si une facture similaire existe déjà"""
+def save_invoice_without_duplicates(ws, invoice_data):
     try:
+        # Récupérer toutes les données existantes
         all_values = ws.get_all_values()
         
-        if not all_values:
-            return False
-            
+        # Vérifier les doublons
         for row in all_values:
             if len(row) >= 5:
                 existing_invoice = row[0] if len(row) > 0 else ""
@@ -683,39 +451,7 @@ def is_duplicate_invoice(ws, invoice_data):
                 
                 if (existing_invoice == invoice_data["facture"] and 
                     existing_bdc == invoice_data["bon_commande"]):
-                    return True
-                    
-        return False
-    except Exception:
-        return False
-
-def is_duplicate_bdc(ws, bdc_data):
-    """Vérifie si un BDC similaire existe déjà"""
-    try:
-        all_values = ws.get_all_values()
-        
-        if not all_values:
-            return False
-            
-        for row in all_values:
-            if len(row) >= 5:
-                existing_bdc = row[0] if len(row) > 0 else ""
-                existing_client = row[1] if len(row) > 1 else ""
-                
-                if (existing_bdc == bdc_data["numero"] and 
-                    existing_client == bdc_data["client"]):
-                    return True
-                    
-        return False
-    except Exception:
-        return False
-
-def save_invoice_without_duplicates(ws, invoice_data):
-    """Enregistre une facture sans doublons"""
-    try:
-        # Vérifier si doublon
-        if is_duplicate_invoice(ws, invoice_data):
-            return 0, 1  # 0 ajouté, 1 doublon
+                    return 0, 1  # 0 ajouté, 1 doublon
         
         # Préparer les données
         today_str = datetime.now().strftime("%d/%m/%Y")
@@ -744,11 +480,19 @@ def save_invoice_without_duplicates(ws, invoice_data):
         raise Exception(f"Erreur lors de l'enregistrement: {str(e)}")
 
 def save_bdc_without_duplicates(ws, bdc_data):
-    """Enregistre un BDC sans doublons"""
     try:
-        # Vérifier si doublon
-        if is_duplicate_bdc(ws, bdc_data):
-            return 0, 1  # 0 ajouté, 1 doublon
+        # Récupérer toutes les données existantes
+        all_values = ws.get_all_values()
+        
+        # Vérifier les doublons
+        for row in all_values:
+            if len(row) >= 5:
+                existing_bdc = row[0] if len(row) > 0 else ""
+                existing_client = row[1] if len(row) > 1 else ""
+                
+                if (existing_bdc == bdc_data["numero"] and 
+                    existing_client == bdc_data["client"]):
+                    return 0, 1  # 0 ajouté, 1 doublon
         
         # Préparer les données
         timestamp = datetime.now().strftime("%d/%m/%Y %H:%M")
@@ -787,33 +531,24 @@ if "invoice_scans" not in st.session_state:
     st.session_state.invoice_scans = 0
 if "bdc_scans" not in st.session_state:
     st.session_state.bdc_scans = 0
-if "current_file_hash" not in st.session_state:
-    st.session_state.current_file_hash = None
 
 # ---------------------------
-# Header
+# Header avec logo
 # ---------------------------
-st.markdown(f"""
-    <div class="header-container">
-        <h1 class="brand-title">{BRAND_TITLE}</h1>
-        <div class="brand-sub">{BRAND_SUB}</div>
-    </div>
-""", unsafe_allow_html=True)
+st.markdown(f"<h1 style='text-align:center;color:{PALETTE['petrol']}'>{BRAND_TITLE}</h1>", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align:center;color:{PALETTE['muted']}'>{BRAND_SUB}</p>", unsafe_allow_html=True)
 
 # ---------------------------
 # Authentication
 # ---------------------------
 if not st.session_state.auth:
-    st.markdown('<div class="premium-card">', unsafe_allow_html=True)
-    st.markdown('<div class="card-title">🔐 Connexion</div>', unsafe_allow_html=True)
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align:center'>🔐 Connexion</h3>", unsafe_allow_html=True)
     
-    col1, col2 = st.columns(2)
-    with col1:
-        nom = st.text_input("Nom (ex: DIRECTION)")
-    with col2:
-        mat = st.text_input("Matricule", type="password")
+    nom = st.text_input("Nom (ex: DIRECTION)")
+    mat = st.text_input("Matricule", type="password")
     
-    if st.button("Se connecter", use_container_width=True):
+    if st.button("Se connecter"):
         if nom and nom.upper() in AUTHORIZED_USERS and AUTHORIZED_USERS[nom.upper()] == mat:
             st.session_state.auth = True
             st.session_state.user_nom = nom.upper()
@@ -821,469 +556,383 @@ if not st.session_state.auth:
         else:
             st.error("❌ Nom ou matricule invalide")
     
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
 # ---------------------------
 # Mode Selection
 # ---------------------------
 if st.session_state.mode is None:
-    st.markdown('<div class="premium-card">', unsafe_allow_html=True)
-    st.markdown('<div class="card-title">📌 Sélectionnez le mode</div>', unsafe_allow_html=True)
-    
-    st.markdown('<div class="mode-selector">', unsafe_allow_html=True)
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align:center'>📌 Choisissez un mode de scan</h3>", unsafe_allow_html=True)
     
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("""
-            <div class="mode-card" onclick="document.getElementById('mode_facture').click()">
-                <div class="mode-icon">📄</div>
-                <div class="mode-title">Scanner Facture</div>
-                <div class="mode-desc">Extraction et enregistrement des factures</div>
-            </div>
-        """, unsafe_allow_html=True)
-        if st.button("📄 Mode Facture", key="mode_facture", use_container_width=True):
+        if st.button("📄 Scanner Facture", use_container_width=True):
             st.session_state.mode = "facture"
             st.rerun()
     
     with col2:
-        st.markdown("""
-            <div class="mode-card" onclick="document.getElementById('mode_bdc').click()">
-                <div class="mode-icon">📝</div>
-                <div class="mode-title">Scanner BDC</div>
-                <div class="mode-desc">Extraction et enregistrement des bons de commande</div>
-            </div>
-        """, unsafe_allow_html=True)
-        if st.button("📝 Mode BDC", key="mode_bdc", use_container_width=True):
+        if st.button("📝 Scanner BDC", use_container_width=True):
             st.session_state.mode = "bdc"
             st.rerun()
     
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
     
-    # Stats
-    st.markdown("---")
-    col1, col2 = st.columns(2)
-    with col1:
-        st.metric("📄 Factures scannées", st.session_state.invoice_scans)
-    with col2:
-        st.metric("📝 BDC scannés", st.session_state.bdc_scans)
-    
-    if st.button("🚪 Déconnexion", use_container_width=True, type="secondary"):
+    if st.button("🚪 Déconnexion"):
         st.session_state.auth = False
         st.session_state.user_nom = ""
         st.rerun()
     
-    st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
 # ---------------------------
 # Facture Mode
 # ---------------------------
 if st.session_state.mode == "facture":
-    st.markdown('<div class="premium-card">', unsafe_allow_html=True)
-    st.markdown('<div class="card-title">📄 Scanner une Facture</div>', unsafe_allow_html=True)
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align:center'>📄 Scanner une Facture</h3>", unsafe_allow_html=True)
     
-    uploaded = st.file_uploader("Téléchargez l'image de la facture", 
-                                 type=["jpg", "jpeg", "png"],
-                                 key="facture_uploader")
+    uploaded = st.file_uploader("Téléchargez l'image de la facture", type=["jpg", "jpeg", "png"])
     
     if uploaded:
-        # Calculer le hash du fichier
-        file_hash = f"{uploaded.name}_{uploaded.size}_{uploaded.timestamp}"
-        
-        if st.session_state.current_file_hash != file_hash:
-            # Nouveau fichier
-            try:
-                img = Image.open(uploaded)
-                st.image(img, caption="Aperçu de la facture", use_column_width=True)
-                
-                # Convertir en bytes
-                buf = BytesIO()
-                img.save(buf, format="JPEG")
-                img_bytes = buf.getvalue()
-                
-                # Traitement OCR
-                with st.spinner("🔍 Traitement OCR en cours..."):
-                    progress_bar = st.progress(0)
-                    for i in range(100):
-                        time.sleep(0.01)
-                        progress_bar.progress(i + 1)
+        try:
+            img = Image.open(uploaded)
+            st.image(img, caption="Aperçu de la facture", use_column_width=True)
+            
+            # Convertir en bytes
+            buf = BytesIO()
+            img.save(buf, format="JPEG")
+            img_bytes = buf.getvalue()
+            
+            # Traitement OCR
+            with st.spinner("Traitement OCR en cours..."):
+                try:
+                    result = invoice_pipeline(img_bytes)
                     
-                    try:
-                        result = invoice_pipeline(img_bytes)
-                        progress_bar.empty()
-                        
-                        # Stocker les résultats
-                        st.session_state.invoice_result = result
-                        st.session_state.current_file_hash = file_hash
-                        
-                        # Afficher les résultats
-                        st.markdown("</div>", unsafe_allow_html=True)
-                        
-                        # Section informations détectées
-                        st.markdown('<div class="premium-card">', unsafe_allow_html=True)
-                        st.markdown('<div class="card-title">📋 Informations détectées</div>', unsafe_allow_html=True)
-                        
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            facture = st.text_input("Numéro de facture", 
-                                                   value=result.get("facture", ""),
-                                                   key="invoice_number")
-                            adresse = st.text_input("Adresse de livraison", 
-                                                   value=result.get("adresse", ""),
-                                                   key="delivery_address")
-                        
-                        with col2:
-                            doit = st.text_input("DOIT", 
-                                                value=result.get("doit", ""),
-                                                key="doit_input")
-                            mois = st.text_input("Mois", 
-                                                value=result.get("mois", ""),
-                                                key="month_input")
-                            bon_commande = st.text_input("Bon de commande", 
-                                                         value=result.get("bon_commande", ""),
-                                                         key="bon_commande_input")
-                        
-                        st.markdown("</div>", unsafe_allow_html=True)
-                        
-                        # Section articles
-                        st.markdown('<div class="premium-card">', unsafe_allow_html=True)
-                        st.markdown('<div class="card-title">🛒 Articles détectés</div>', unsafe_allow_html=True)
-                        
-                        articles = result.get("articles", [])
-                        if articles:
-                            df = pd.DataFrame(articles)
-                            edited_df = st.data_editor(
-                                df,
-                                num_rows="dynamic",
-                                column_config={
-                                    "article": st.column_config.TextColumn("Article", width="large"),
-                                    "bouteilles": st.column_config.NumberColumn("Bouteilles", min_value=0, width="small")
-                                },
-                                use_container_width=True,
-                                key="invoice_items_editor"
-                            )
-                            st.session_state.edited_invoice_df = edited_df
+                    # Afficher les résultats
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    
+                    # Section informations détectées
+                    st.markdown("<div class='card'>", unsafe_allow_html=True)
+                    st.markdown("<h4>📋 Informations détectées</h4>", unsafe_allow_html=True)
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        facture = st.text_input("Numéro de facture", value=result.get("facture", ""))
+                        adresse = st.text_input("Adresse de livraison", value=result.get("adresse", ""))
+                    
+                    with col2:
+                        doit = st.text_input("DOIT", value=result.get("doit", ""))
+                        mois = st.text_input("Mois", value=result.get("mois", ""))
+                        bon_commande = st.text_input("Bon de commande", value=result.get("bon_commande", ""))
+                    
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    
+                    # Section articles
+                    st.markdown("<div class='card'>", unsafe_allow_html=True)
+                    st.markdown("<h4>🛒 Articles détectés</h4>", unsafe_allow_html=True)
+                    
+                    articles = result.get("articles", [])
+                    if articles:
+                        df = pd.DataFrame(articles)
+                        edited_df = st.data_editor(
+                            df,
+                            num_rows="dynamic",
+                            column_config={
+                                "article": st.column_config.TextColumn("Article", width="large"),
+                                "bouteilles": st.column_config.NumberColumn("Bouteilles", min_value=0, width="small")
+                            },
+                            use_container_width=True
+                        )
+                    else:
+                        st.warning("Aucun article détecté. Ajoutez-les manuellement.")
+                        df = pd.DataFrame(columns=["article", "bouteilles"])
+                        edited_df = st.data_editor(
+                            df,
+                            num_rows="dynamic",
+                            column_config={
+                                "article": st.column_config.TextColumn("Article"),
+                                "bouteilles": st.column_config.NumberColumn("Bouteilles", min_value=0)
+                            },
+                            use_container_width=True
+                        )
+                    
+                    # Bouton ajouter ligne
+                    if st.button("➕ Ajouter une ligne"):
+                        new_row = {"article": "", "bouteilles": 0}
+                        if 'edited_df' in locals():
+                            edited_df = pd.concat([edited_df, pd.DataFrame([new_row])], ignore_index=True)
                         else:
-                            st.warning("Aucun article détecté. Ajoutez-les manuellement.")
-                            df = pd.DataFrame(columns=["article", "bouteilles"])
-                            edited_df = st.data_editor(
-                                df,
-                                num_rows="dynamic",
-                                column_config={
-                                    "article": st.column_config.TextColumn("Article"),
-                                    "bouteilles": st.column_config.NumberColumn("Bouteilles", min_value=0)
-                                },
-                                use_container_width=True,
-                                key="invoice_items_editor_empty"
-                            )
-                            st.session_state.edited_invoice_df = edited_df
-                        
-                        if st.button("➕ Ajouter une ligne", key="add_invoice_line"):
-                            new_row = {"article": "", "bouteilles": 0}
-                            new_df = pd.DataFrame([new_row])
-                            st.session_state.edited_invoice_df = pd.concat([edited_df, new_df], ignore_index=True)
-                            st.rerun()
-                        
-                        st.markdown("</div>", unsafe_allow_html=True)
-                        
-                        # Section OCR brut
-                        st.markdown('<div class="premium-card">', unsafe_allow_html=True)
-                        with st.expander("📄 Voir le texte OCR brut"):
-                            st.text_area("Texte OCR", value=result.get("raw", ""), height=200, key="invoice_ocr_raw")
-                        st.markdown("</div>", unsafe_allow_html=True)
-                        
-                        # Section export Google Sheets
-                        st.markdown('<div class="premium-card">', unsafe_allow_html=True)
-                        st.markdown('<div class="card-title">📤 Export vers Google Sheets</div>', unsafe_allow_html=True)
-                        
-                        ws = get_invoice_worksheet()
-                        
-                        if ws is None:
-                            st.warning("⚠️ Google Sheets non configuré. Configurez les credentials dans les secrets.")
-                        else:
-                            if st.button("💾 Enregistrer la facture", type="primary", use_container_width=True):
-                                with st.spinner("Enregistrement en cours..."):
-                                    try:
-                                        # Préparer les données
-                                        invoice_data = {
-                                            "facture": facture,
-                                            "doit": doit,
-                                            "adresse": adresse,
-                                            "mois": mois,
-                                            "bon_commande": bon_commande,
-                                            "articles": st.session_state.edited_invoice_df.to_dict('records')
-                                        }
+                            edited_df = pd.DataFrame([new_row])
+                    
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    
+                    # Section OCR brut
+                    st.markdown("<div class='card'>", unsafe_allow_html=True)
+                    with st.expander("📄 Voir le texte OCR brut"):
+                        st.text_area("Texte OCR", value=result.get("raw", ""), height=200)
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    
+                    # Section export Google Sheets
+                    st.markdown("<div class='card'>", unsafe_allow_html=True)
+                    st.markdown("<h4>📤 Export vers Google Sheets</h4>", unsafe_allow_html=True)
+                    
+                    ws = get_invoice_worksheet()
+                    
+                    if ws is None:
+                        st.warning("⚠️ Google Sheets non configuré. Configurez les credentials dans les secrets.")
+                    else:
+                        if st.button("💾 Enregistrer la facture"):
+                            try:
+                                # Préparer les données
+                                data_to_save = []
+                                for _, row in edited_df.iterrows():
+                                    if str(row["article"]).strip() and str(row["bouteilles"]).strip():
+                                        data_to_save.append([
+                                            facture,
+                                            doit,
+                                            datetime.now().strftime("%d/%m/%Y"),
+                                            bon_commande,
+                                            adresse,
+                                            str(row["article"]).strip(),
+                                            str(row["bouteilles"]).strip(),
+                                            datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                            st.session_state.user_nom
+                                        ])
+                                
+                                if data_to_save:
+                                    # Enregistrer sans doublons
+                                    saved_count, duplicate_count = save_invoice_without_duplicates(ws, {
+                                        "facture": facture,
+                                        "doit": doit,
+                                        "adresse": adresse,
+                                        "mois": mois,
+                                        "bon_commande": bon_commande,
+                                        "articles": edited_df.to_dict('records')
+                                    })
+                                    
+                                    if saved_count > 0:
+                                        st.session_state.invoice_scans += 1
+                                        st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succuis!")
                                         
-                                        # Enregistrer sans doublons
-                                        saved_count, duplicate_count = save_invoice_without_duplicates(ws, invoice_data)
+                                        if duplicate_count > 0:
+                                            st.info(f"⚠️ {duplicate_count} ligne(s) en doublon non ajoutée(s)")
                                         
-                                        if saved_count > 0:
-                                            st.session_state.invoice_scans += 1
-                                            st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succuis!")
-                                            
-                                            if duplicate_count > 0:
-                                                st.info(f"⚠️ {duplicate_count} ligne(s) en doublon non ajoutée(s)")
-                                            
-                                            st.info(f"👤 Enregistré par: {st.session_state.user_nom}")
-                                            st.session_state.current_file_hash = None
-                                            time.sleep(1)
-                                            st.rerun()
-                                        elif duplicate_count > 0:
-                                            st.warning("⚠️ Cette facture existe déjà dans la base de données.")
-                                        else:
-                                            st.warning("⚠️ Aucune donnée à enregistrer")
-                                            
-                                    except Exception as e:
-                                        st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
-                        
-                        st.markdown("</div>", unsafe_allow_html=True)
-                        
-                    except Exception as e:
-                        progress_bar.empty()
-                        st.error(f"❌ Erreur OCR: {str(e)}")
-            except Exception as e:
-                st.error(f"❌ Erreur de traitement d'image: {str(e)}")
-        else:
-            st.info("📄 Cette facture a déjà été traitée. Téléchargez une nouvelle image si nécessaire.")
-            st.markdown("</div>", unsafe_allow_html=True)
+                                        st.info(f"👤 Enregistré par: {st.session_state.user_nom}")
+                                    elif duplicate_count > 0:
+                                        st.warning("⚠️ Cette facture existe déjà dans la base de données.")
+                                    else:
+                                        st.warning("⚠️ Aucune donnée valide à enregistrer")
+                                        
+                            except Exception as e:
+                                st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
+                    
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    
+                except Exception as e:
+                    st.error(f"❌ Erreur OCR: {str(e)}")
+        
+        except Exception as e:
+            st.error(f"❌ Erreur de traitement d'image: {str(e)}")
     
     else:
         st.info("📤 Veuillez télécharger une image de facture")
         st.markdown("</div>", unsafe_allow_html=True)
     
     # Boutons de navigation
-    st.markdown('<div class="premium-card">', unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
     with col1:
-        if st.button("⬅️ Retour", use_container_width=True):
+        if st.button("⬅️ Retour"):
             st.session_state.mode = None
-            st.session_state.current_file_hash = None
             st.rerun()
     
     with col2:
-        if st.button("📝 Passer aux BDC", use_container_width=True):
+        if st.button("📝 Passer aux BDC"):
             st.session_state.mode = "bdc"
-            st.session_state.current_file_hash = None
             st.rerun()
     
     with col3:
-        if st.button("🚪 Déconnexion", use_container_width=True):
+        if st.button("🚪 Déconnexion"):
             st.session_state.auth = False
             st.session_state.user_nom = ""
             st.session_state.mode = None
-            st.session_state.current_file_hash = None
             st.rerun()
-    
-    st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------------------
 # BDC Mode
 # ---------------------------
 elif st.session_state.mode == "bdc":
-    st.markdown('<div class="premium-card">', unsafe_allow_html=True)
-    st.markdown('<div class="card-title">📝 Scanner un Bon de Commande</div>', unsafe_allow_html=True)
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align:center'>📝 Scanner un Bon de Commande</h3>", unsafe_allow_html=True)
     
-    uploaded = st.file_uploader("Téléchargez l'image du BDC", 
-                                 type=["jpg", "jpeg", "png"],
-                                 key="bdc_uploader")
+    uploaded = st.file_uploader("Téléchargez l'image du BDC", type=["jpg", "jpeg", "png"])
     
     if uploaded:
-        # Calculer le hash du fichier
-        file_hash = f"{uploaded.name}_{uploaded.size}_{uploaded.timestamp}"
-        
-        if st.session_state.current_file_hash != file_hash:
-            # Nouveau fichier
-            try:
-                img = Image.open(uploaded)
-                st.image(img, caption="Aperçu du BDC", use_column_width=True)
-                
-                # Convertir en bytes
-                buf = BytesIO()
-                img.save(buf, format="JPEG")
-                img_bytes = buf.getvalue()
-                
-                # Traitement OCR
-                with st.spinner("🔍 Traitement OCR en cours..."):
-                    progress_bar = st.progress(0)
-                    for i in range(100):
-                        time.sleep(0.01)
-                        progress_bar.progress(i + 1)
+        try:
+            img = Image.open(uploaded)
+            st.image(img, caption="Aperçu du BDC", use_column_width=True)
+            
+            # Convertir en bytes
+            buf = BytesIO()
+            img.save(buf, format="JPEG")
+            img_bytes = buf.getvalue()
+            
+            # Traitement OCR
+            with st.spinner("Traitement OCR en cours..."):
+                try:
+                    result = bdc_pipeline(img_bytes)
                     
-                    try:
-                        result = bdc_pipeline(img_bytes)
-                        progress_bar.empty()
-                        
-                        # Stocker les résultats
-                        st.session_state.bdc_result = result
-                        st.session_state.current_file_hash = file_hash
-                        
-                        # Afficher les résultats
-                        st.markdown("</div>", unsafe_allow_html=True)
-                        
-                        # Section informations détectées
-                        st.markdown('<div class="premium-card">', unsafe_allow_html=True)
-                        st.markdown('<div class="card-title">📋 Informations détectées</div>', unsafe_allow_html=True)
-                        
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            numero = st.text_input("Numéro BDC", 
-                                                  value=result.get("numero", "25011956"),
-                                                  key="bdc_number")
-                            client = st.text_input("Client/Facturation", 
-                                                  value=result.get("client", "S2M"),
-                                                  key="bdc_client")
-                        
-                        with col2:
-                            date = st.text_input("Date émission", 
-                                                value=result.get("date", "04/11/2025"),
-                                                key="bdc_date")
-                            adresse = st.text_input("Adresse livraison", 
-                                                   value=result.get("adresse_livraison", "SCORE TALATAMATY"),
-                                                   key="bdc_address")
-                        
-                        st.markdown("</div>", unsafe_allow_html=True)
-                        
-                        # Section articles
-                        st.markdown('<div class="premium-card">', unsafe_allow_html=True)
-                        st.markdown('<div class="card-title">🛒 Articles détectés</div>', unsafe_allow_html=True)
-                        
-                        articles = result.get("articles", [])
-                        if articles:
-                            df = pd.DataFrame(articles)
-                            edited_df = st.data_editor(
-                                df,
-                                num_rows="dynamic",
-                                column_config={
-                                    "Désignation": st.column_config.TextColumn("Désignation", width="large"),
-                                    "Qté": st.column_config.NumberColumn("Qté", format="%.3f", width="small")
-                                },
-                                use_container_width=True,
-                                key="bdc_items_editor"
-                            )
-                            st.session_state.edited_bdc_df = edited_df
+                    # Afficher les résultats
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    
+                    # Section informations détectées
+                    st.markdown("<div class='card'>", unsafe_allow_html=True)
+                    st.markdown("<h4>📋 Informations détectées</h4>", unsafe_allow_html=True)
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        numero = st.text_input("Numéro BDC", value=result.get("numero", "25011956"))
+                        client = st.text_input("Client/Facturation", value=result.get("client", "S2M"))
+                    
+                    with col2:
+                        date = st.text_input("Date émission", value=result.get("date", "04/11/2025"))
+                        adresse = st.text_input("Adresse livraison", value=result.get("adresse_livraison", "SCORE TALATAMATY"))
+                    
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    
+                    # Section articles
+                    st.markdown("<div class='card'>", unsafe_allow_html=True)
+                    st.markdown("<h4>🛒 Articles détectés</h4>", unsafe_allow_html=True)
+                    
+                    articles = result.get("articles", [])
+                    if articles:
+                        df = pd.DataFrame(articles)
+                        edited_df = st.data_editor(
+                            df,
+                            num_rows="dynamic",
+                            column_config={
+                                "Désignation": st.column_config.TextColumn("Désignation", width="large"),
+                                "Qté": st.column_config.NumberColumn("Qté", format="%.3f", width="small")
+                            },
+                            use_container_width=True
+                        )
+                    else:
+                        st.warning("Aucun article détecté. Ajoutez-les manuellement.")
+                        df = pd.DataFrame(columns=["Désignation", "Qté"])
+                        edited_df = st.data_editor(
+                            df,
+                            num_rows="dynamic",
+                            column_config={
+                                "Désignation": st.column_config.TextColumn("Désignation"),
+                                "Qté": st.column_config.NumberColumn("Qté", format="%.3f")
+                            },
+                            use_container_width=True
+                        )
+                    
+                    # Bouton ajouter ligne
+                    if st.button("➕ Ajouter une ligne"):
+                        new_row = {"Désignation": "", "Qté": ""}
+                        if 'edited_df' in locals():
+                            edited_df = pd.concat([edited_df, pd.DataFrame([new_row])], ignore_index=True)
                         else:
-                            st.warning("Aucun article détecté. Ajoutez-les manuellement.")
-                            df = pd.DataFrame(columns=["Désignation", "Qté"])
-                            edited_df = st.data_editor(
-                                df,
-                                num_rows="dynamic",
-                                column_config={
-                                    "Désignation": st.column_config.TextColumn("Désignation"),
-                                    "Qté": st.column_config.NumberColumn("Qté", format="%.3f")
-                                },
-                                use_container_width=True,
-                                key="bdc_items_editor_empty"
-                            )
-                            st.session_state.edited_bdc_df = edited_df
-                        
-                        if st.button("➕ Ajouter une ligne", key="add_bdc_line"):
-                            new_row = {"Désignation": "", "Qté": ""}
-                            new_df = pd.DataFrame([new_row])
-                            st.session_state.edited_bdc_df = pd.concat([edited_df, new_df], ignore_index=True)
-                            st.rerun()
-                        
-                        st.markdown("</div>", unsafe_allow_html=True)
-                        
-                        # Section OCR brut
-                        st.markdown('<div class="premium-card">', unsafe_allow_html=True)
-                        with st.expander("📄 Voir le texte OCR brut"):
-                            st.text_area("Texte OCR", value=result.get("raw", ""), height=200, key="bdc_ocr_raw")
-                        st.markdown("</div>", unsafe_allow_html=True)
-                        
-                        # Section export Google Sheets
-                        st.markdown('<div class="premium-card">', unsafe_allow_html=True)
-                        st.markdown('<div class="card-title">📤 Export vers Google Sheets</div>', unsafe_allow_html=True)
-                        
-                        ws = get_bdc_worksheet()
-                        
-                        if ws is None:
-                            st.warning("⚠️ Google Sheets non configuré. Configurez les credentials dans les secrets.")
-                        else:
-                            if st.button("💾 Enregistrer le BDC", type="primary", use_container_width=True):
-                                with st.spinner("Enregistrement en cours..."):
-                                    try:
-                                        # Préparer les données
-                                        bdc_data = {
-                                            "numero": numero,
-                                            "client": client,
-                                            "date": date,
-                                            "adresse_livraison": adresse,
-                                            "articles": st.session_state.edited_bdc_df.to_dict('records')
-                                        }
+                            edited_df = pd.DataFrame([new_row])
+                    
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    
+                    # Section OCR brut
+                    st.markdown("<div class='card'>", unsafe_allow_html=True)
+                    with st.expander("📄 Voir le texte OCR brut"):
+                        st.text_area("Texte OCR", value=result.get("raw", ""), height=200)
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    
+                    # Section export Google Sheets
+                    st.markdown("<div class='card'>", unsafe_allow_html=True)
+                    st.markdown("<h4>📤 Export vers Google Sheets</h4>", unsafe_allow_html=True)
+                    
+                    ws = get_bdc_worksheet()
+                    
+                    if ws is None:
+                        st.warning("⚠️ Google Sheets non configuré. Configurez les credentials dans les secrets.")
+                    else:
+                        if st.button("💾 Enregistrer dans Google Sheets"):
+                            try:
+                                # Préparer les données
+                                data_to_save = []
+                                for _, row in edited_df.iterrows():
+                                    if str(row["Désignation"]).strip() and str(row["Qté"]).strip():
+                                        data_to_save.append([
+                                            numero,
+                                            client,
+                                            date,
+                                            adresse,
+                                            str(row["Désignation"]).strip(),
+                                            str(row["Qté"]).strip(),
+                                            datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                            st.session_state.user_nom
+                                        ])
+                                
+                                if data_to_save:
+                                    # Enregistrer sans doublons
+                                    saved_count, duplicate_count = save_bdc_without_duplicates(ws, {
+                                        "numero": numero,
+                                        "client": client,
+                                        "date": date,
+                                        "adresse_livraison": adresse,
+                                        "articles": edited_df.to_dict('records')
+                                    })
+                                    
+                                    if saved_count > 0:
+                                        st.session_state.bdc_scans += 1
+                                        st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succuis!")
                                         
-                                        # Enregistrer sans doublons
-                                        saved_count, duplicate_count = save_bdc_without_duplicates(ws, bdc_data)
+                                        if duplicate_count > 0:
+                                            st.info(f"⚠️ {duplicate_count} ligne(s) en doublon non ajoutée(s)")
                                         
-                                        if saved_count > 0:
-                                            st.session_state.bdc_scans += 1
-                                            st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succuis!")
-                                            
-                                            if duplicate_count > 0:
-                                                st.info(f"⚠️ {duplicate_count} ligne(s) en doublon non ajoutée(s)")
-                                            
-                                            st.info(f"👤 Enregistré par: {st.session_state.user_nom}")
-                                            st.session_state.current_file_hash = None
-                                            time.sleep(1)
-                                            st.rerun()
-                                        elif duplicate_count > 0:
-                                            st.warning("⚠️ Ce BDC existe déjà dans la base de données.")
-                                        else:
-                                            st.warning("⚠️ Aucune donnée à enregistrer")
-                                            
-                                    except Exception as e:
-                                        st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
-                        
-                        st.markdown("</div>", unsafe_allow_html=True)
-                        
-                    except Exception as e:
-                        progress_bar.empty()
-                        st.error(f"❌ Erreur OCR: {str(e)}")
-            except Exception as e:
-                st.error(f"❌ Erreur de traitement d'image: {str(e)}")
-        else:
-            st.info("📝 Ce BDC a déjà été traité. Téléchargez une nouvelle image si nécessaire.")
-            st.markdown("</div>", unsafe_allow_html=True)
+                                        st.info(f"👤 Enregistré par: {st.session_state.user_nom}")
+                                    elif duplicate_count > 0:
+                                        st.warning("⚠️ Ce BDC existe déjà dans la base de données.")
+                                    else:
+                                        st.warning("⚠️ Aucune donnée valide à enregistrer")
+                                        
+                            except Exception as e:
+                                st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
+                    
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    
+                except Exception as e:
+                    st.error(f"❌ Erreur OCR: {str(e)}")
+        
+        except Exception as e:
+            st.error(f"❌ Erreur de traitement d'image: {str(e)}")
     
     else:
         st.info("📤 Veuillez télécharger une image de bon de commande")
         st.markdown("</div>", unsafe_allow_html=True)
     
     # Boutons de navigation
-    st.markdown('<div class="premium-card">', unsafe_allow_html=True)
     col1, col2, col3 = st.columns([1, 2, 1])
     with col1:
-        if st.button("⬅️ Retour", use_container_width=True):
+        if st.button("⬅️ Retour"):
             st.session_state.mode = None
-            st.session_state.current_file_hash = None
             st.rerun()
     
     with col2:
-        if st.button("📄 Passer aux factures", use_container_width=True):
+        if st.button("📄 Passer aux factures"):
             st.session_state.mode = "facture"
-            st.session_state.current_file_hash = None
             st.rerun()
     
     with col3:
-        if st.button("🚪 Déconnexion", use_container_width=True):
+        if st.button("🚪 Déconnexion"):
             st.session_state.auth = False
             st.session_state.user_nom = ""
             st.session_state.mode = None
-            st.session_state.current_file_hash = None
             st.rerun()
-    
-    st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------------------
 # Footer
 # ---------------------------
-st.markdown("""
-    <div class="footer">
-        <div>© 2024 Chan Foui et Fils — OCR Facture PRO</div>
-        <div>Session: <span class="highlight">""" + st.session_state.user_nom + """</span> | 
-             Factures: <span class="highlight">""" + str(st.session_state.invoice_scans) + """</span> | 
-             BDC: <span class="highlight">""" + str(st.session_state.bdc_scans) + """</span>
-        </div>
-        <div style="font-size: 0.7rem; margin-top: 0.5rem;">Google Vision API • Streamlit • Premium Design</div>
-    </div>
-""", unsafe_allow_html=True)
+st.markdown("---")
+st.markdown(f"<p style='text-align:center;color:{PALETTE['muted']};font-size:0.8em'>"
+            f"Session: {st.session_state.user_nom} | Factures: {st.session_state.invoice_scans} | BDC: {st.session_state.bdc_scans}</p>", 
+            unsafe_allow_html=True)
