@@ -441,9 +441,9 @@ def get_invoice_worksheet():
 #Suppresion d erreur Nan
 def save_invoice_without_duplicates(ws, invoice_data, user_nom):
     def clean_value(v):
-    try:
-    if v is None:
-    return ""
+        try:
+            if v is None:
+        return ""
     if isinstance(v, float):
     if np.isnan(v) or np.isinf(v):
     return ""
@@ -963,6 +963,7 @@ st.markdown("---")
 st.markdown(f"<p style='text-align:center;color:{PALETTE['muted']};font-size:0.8em'>"
             f"Session: {st.session_state.user_nom} | Factures: {st.session_state.invoice_scans} | BDC: {st.session_state.bdc_scans}</p>", 
             unsafe_allow_html=True)
+
 
 
 
