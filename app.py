@@ -38,10 +38,10 @@ BRAND_SUB = "Google Vision — Edition Premium"
 # AUTH (updated)
 # ---------------------------
 AUTHORIZED_USERS = {
-    "DIRECTION": "CFF10",
-    "COMERCIALE": "CFF11",
-    "STOCK": "CFF12",
-    "AUTRES": "CFF13"
+    "Latitia": "CFF1",
+    "Elodie": "CFF2",
+    "Pathou": "CFF3",
+    "Admin": "CFF4"
 }
 
 # ---------------------------
@@ -562,8 +562,8 @@ if not st.session_state.auth:
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<h3 style='text-align:center'>🔐 Connexion</h3>", unsafe_allow_html=True)
     
-    nom = st.text_input("Nom (ex: DIRECTION)")
-    mat = st.text_input("Matricule", type="password")
+    nom = st.text_input("Nom (ex: admin)")
+    mat = st.text_input("code", type="password")
     
     if st.button("Se connecter"):
         if nom and nom.upper() in AUTHORIZED_USERS and AUTHORIZED_USERS[nom.upper()] == mat:
@@ -963,5 +963,6 @@ st.markdown("---")
 st.markdown(f"<p style='text-align:center;color:{PALETTE['muted']};font-size:0.8em'>"
             f"Session: {st.session_state.user_nom} | Factures: {st.session_state.invoice_scans} | BDC: {st.session_state.bdc_scans}</p>", 
             unsafe_allow_html=True)
+
 
 
