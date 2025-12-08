@@ -439,6 +439,7 @@ def get_invoice_worksheet():
         return None
 
 #Suppresion d erreur Nan
+# Suppresion d erreur Nan
 def save_invoice_without_duplicates(ws, invoice_data, user_nom):
     try:
         # Fonction pour nettoyer les valeurs NaN / None / inf
@@ -497,6 +498,47 @@ def save_invoice_without_duplicates(ws, invoice_data, user_nom):
     except Exception as e:
         raise Exception(f"Erreur lors de l'enregistrement: {str(e)}")
 
+#Fin Nan correction 
+
+def save_bdc_without_duplicates(ws, bdc_data, user_nom):  # <-- Définie en dehors de la fonction précédente
+    try:
+        # Récupérer toutes les données existantes
+        all_values = ws.get_all_values()
+        
+        # Vérifier les doublons
+        for row in all_values:
+            if len(row) >= 5:
+                existing_bdc = row[0] if len(row) > 0 else ""
+                existing_client = row[1] if len(row) > 1 else ""
+                
+                if (existing_bdc == bdc_data["numero"] and 
+                    existing_client == bdc_data["client"]):
+                    return 0, 1  # 0 ajouté, 1 doublon
+        
+        # Préparer les données
+        timestamp = datetime.now().strftime("%d/%m/%Y %H:%M")
+        
+        rows_to_add = []
+        for item in bdc_data["articles"]:
+            rows_to_add.append([
+                bdc_data["numero"],
+                bdc_data["client"],
+                bdc_data["date"],
+                bdc_data["adresse_livraison"],
+                item["Désignation"],
+                item["Qté"],
+                timestamp,
+                user_nom
+            ])
+        
+        if rows_to_add:
+            ws.append_rows(rows_to_add)
+            return len(rows_to_add), 0
+        
+        return 0, 0  # <-- Bien indenté dans le try
+    
+    except Exception as e:
+        raise Exception(f"Erreur lors de l'enregistrement: {str(e)}")
 #Fin Nan correction 
     
     def save_bdc_without_duplicates(ws, bdc_data, user_nom):
@@ -966,6 +1008,7 @@ st.markdown("---")
 st.markdown(f"<p style='text-align:center;color:{PALETTE['muted']};font-size:0.8em'>"
             f"Session: {st.session_state.user_nom} | Factures: {st.session_state.invoice_scans} | BDC: {st.session_state.bdc_scans}</p>", 
             unsafe_allow_html=True)
+
 
 
 
