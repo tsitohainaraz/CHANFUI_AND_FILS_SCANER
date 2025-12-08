@@ -441,7 +441,7 @@ def get_invoice_worksheet():
 #Suppresion d erreur Nan
 "variant":"code",
 "id":"28491"
-}
+
 def save_invoice_without_duplicates(ws, invoice_data, user_nom):
     try:
     # Fonction pour nettoyer les valeurs NaN / None / inf
@@ -970,6 +970,7 @@ st.markdown("---")
 st.markdown(f"<p style='text-align:center;color:{PALETTE['muted']};font-size:0.8em'>"
             f"Session: {st.session_state.user_nom} | Factures: {st.session_state.invoice_scans} | BDC: {st.session_state.bdc_scans}</p>", 
             unsafe_allow_html=True)
+
 
 
 
