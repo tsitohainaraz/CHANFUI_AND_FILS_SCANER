@@ -95,21 +95,36 @@ st.markdown(
         border-radius:10px;
         padding:8px 12px;
     }}
-    .success-message {{
-        background-color: #d4edda;
-        color: #155724;
-        padding: 12px;
-        border-radius: 8px;
-        border: 1px solid #c3e6cb;
-        margin: 10px 0;
+    .secondary-button {{
+        background: linear-gradient(180deg, #f0f0f0, #d0d0d0) !important;
+        color: #333 !important;
+        font-weight:600 !important;
+        border-radius:10px !important;
+        padding:8px 12px !important;
+        border: 1px solid #ccc !important;
     }}
-    .reset-button {{
-        background: linear-gradient(180deg, #f0f0f0, #d0d0d0);
-        color: #333;
-        font-weight:600;
-        border-radius:10px;
-        padding:8px 12px;
-        border: 1px solid #ccc;
+    .logo-title-container {{
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 20px;
+        margin-bottom: 10px;
+    }}
+    .logo-img {{
+        height: 80px;
+        width: auto;
+    }}
+    .brand-title {{
+        color: {PALETTE['petrol']};
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin: 0;
+    }}
+    .brand-sub {{
+        color: {PALETTE['muted']};
+        text-align: center;
+        font-size: 1.1rem;
+        margin-top: 0;
     }}
     </style>
     """,
@@ -576,10 +591,22 @@ if "ocr_result" not in st.session_state:
     st.session_state.ocr_result = None
 
 # ---------------------------
-# Header avec logo
+# Header avec logo et titre côte à côte
 # ---------------------------
-st.markdown(f"<h1 style='text-align:center;color:{PALETTE['petrol']}'>{BRAND_TITLE}</h1>", unsafe_allow_html=True)
-st.markdown(f"<p style='text-align:center;color:{PALETTE['muted']}'>{BRAND_SUB}</p>", unsafe_allow_html=True)
+# Créer un conteneur pour le logo et le titre
+col_logo, col_title = st.columns([1, 3])
+with col_logo:
+    # Vérifier si le fichier logo existe
+    if os.path.exists(LOGO_FILENAME):
+        st.image(LOGO_FILENAME, width=100)
+    else:
+        # Fallback si le logo n'existe pas
+        st.markdown("🍷")
+
+with col_title:
+    st.markdown(f"<h1 class='brand-title'>{BRAND_TITLE}</h1>", unsafe_allow_html=True)
+
+st.markdown(f"<p class='brand-sub'>{BRAND_SUB}</p>", unsafe_allow_html=True)
 
 # ---------------------------
 # Authentication
@@ -635,16 +662,6 @@ if st.session_state.mode is None:
 if st.session_state.mode == "facture":
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<h3 style='text-align:center'>📄 Scanner une Facture</h3>", unsafe_allow_html=True)
-    
-    # Bouton Réinitialiser si un fichier est déjà chargé
-    if st.session_state.uploaded_file is not None and st.session_state.show_ocr_results:
-        col1, col2 = st.columns([3, 1])
-        with col2:
-            if st.button("🗑️ Effacer et recommencer", type="secondary", use_container_width=True):
-                st.session_state.uploaded_file = None
-                st.session_state.show_ocr_results = False
-                st.session_state.ocr_result = None
-                st.rerun()
     
     uploaded = st.file_uploader("Téléchargez l'image de la facture", type=["jpg", "jpeg", "png"], 
                                 key="facture_uploader")
@@ -747,7 +764,7 @@ if st.session_state.mode == "facture":
             st.text_area("Texte OCR", value=result.get("raw", ""), height=200, key="facture_raw")
         st.markdown("</div>", unsafe_allow_html=True)
         
-        # Section export Google Sheets avec bouton Réinitialiser
+        # Section export Google Sheets
         st.markdown("<div class='card'>", unsafe_allow_html=True)
         st.markdown("<h4>📤 Export vers Google Sheets</h4>", unsafe_allow_html=True)
         
@@ -756,73 +773,65 @@ if st.session_state.mode == "facture":
         if ws is None:
             st.warning("⚠️ Google Sheets non configuré. Configurez les credentials dans les secrets.")
         else:
-            col1, col2, col3 = st.columns([2, 1, 1])
-            with col1:
-                if st.button("💾 Enregistrer la facture", use_container_width=True, key="facture_save"):
-                    try:
-                        # Vérifier que user_nom existe
-                        if not hasattr(st.session_state, 'user_nom') or not st.session_state.user_nom:
-                            st.error("❌ Erreur de session. Veuillez vous reconnecter.")
-                        else:
-                            # Préparer les données avec le nouvel ordre
-                            data_to_save = []
-                            for _, row in edited_df.iterrows():
-                                if str(row["article"]).strip() and str(row["bouteilles"]).strip():
-                                    data_to_save.append([
-                                        mois,
-                                        doit,
-                                        datetime.now().strftime("%d/%m/%Y"),
-                                        bon_commande,
-                                        adresse,
-                                        str(row["article"]).strip(),
-                                        str(row["bouteilles"]).strip(),
-                                        st.session_state.user_nom
-                                    ])
+            if st.button("💾 Enregistrer la facture", use_container_width=True, key="facture_save"):
+                try:
+                    # Vérifier que user_nom existe
+                    if not hasattr(st.session_state, 'user_nom') or not st.session_state.user_nom:
+                        st.error("❌ Erreur de session. Veuillez vous reconnecter.")
+                    else:
+                        # Préparer les données avec le nouvel ordre
+                        data_to_save = []
+                        for _, row in edited_df.iterrows():
+                            if str(row["article"]).strip() and str(row["bouteilles"]).strip():
+                                data_to_save.append([
+                                    mois,
+                                    doit,
+                                    datetime.now().strftime("%d/%m/%Y"),
+                                    bon_commande,
+                                    adresse,
+                                    str(row["article"]).strip(),
+                                    str(row["bouteilles"]).strip(),
+                                    st.session_state.user_nom
+                                ])
+                        
+                        if data_to_save:
+                            # Enregistrer sans doublons
+                            saved_count, duplicate_count = save_invoice_without_duplicates(ws, {
+                                "mois": mois,
+                                "doit": doit,
+                                "bon_commande": bon_commande,
+                                "adresse": adresse,
+                                "articles": edited_df.to_dict('records')
+                            }, st.session_state.user_nom)
                             
-                            if data_to_save:
-                                # Enregistrer sans doublons
-                                saved_count, duplicate_count = save_invoice_without_duplicates(ws, {
-                                    "mois": mois,
-                                    "doit": doit,
-                                    "bon_commande": bon_commande,
-                                    "adresse": adresse,
-                                    "articles": edited_df.to_dict('records')
-                                }, st.session_state.user_nom)
+                            if saved_count > 0:
+                                st.session_state.invoice_scans += 1
+                                st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succès!")
+                                st.info(f"📝 Format enregistré: Mois | Doit | Date | Bon de commande | Adresse | Article | Bouteilles | Editeur")
+                                st.info(f"👤 Enregistré par: {st.session_state.user_nom}")
                                 
-                                if saved_count > 0:
-                                    st.session_state.invoice_scans += 1
-                                    st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succès!")
-                                    st.info(f"📝 Format enregistré: Mois | Doit | Date | Bon de commande | Adresse | Article | Bouteilles | Editeur")
-                                    st.info(f"👤 Enregistré par: {st.session_state.user_nom}")
+                                # Bouton pour effacer et recommencer
+                                if st.button("🗑️ Effacer et recommencer", use_container_width=True, type="secondary"):
+                                    st.session_state.uploaded_file = None
+                                    st.session_state.show_ocr_results = False
+                                    st.session_state.ocr_result = None
+                                    st.rerun()
                                     
-                                    # Bouton pour charger un autre fichier
-                                    if st.button("📤 Charger un autre fichier", type="secondary"):
-                                        st.session_state.uploaded_file = None
-                                        st.session_state.show_ocr_results = False
-                                        st.session_state.ocr_result = None
-                                        st.rerun()
-                                        
-                                elif duplicate_count > 0:
-                                    st.warning("⚠️ Cette facture existe déjà dans la base de données.")
-                                else:
-                                    st.warning("⚠️ Aucune donnée valide à enregistrer")
-                                    
-                    except Exception as e:
-                        st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
+                            elif duplicate_count > 0:
+                                st.warning("⚠️ Cette facture existe déjà dans la base de données.")
+                            else:
+                                st.warning("⚠️ Aucune donnée valide à enregistrer")
+                                
+                except Exception as e:
+                    st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
             
-            with col2:
-                if st.button("🗑️ Effacer", type="secondary", use_container_width=True, key="facture_clear"):
-                    st.session_state.uploaded_file = None
-                    st.session_state.show_ocr_results = False
-                    st.session_state.ocr_result = None
-                    st.rerun()
-            
-            with col3:
-                if st.button("📤 Nouveau", type="secondary", use_container_width=True, key="facture_new"):
-                    st.session_state.uploaded_file = None
-                    st.session_state.show_ocr_results = False
-                    st.session_state.ocr_result = None
-                    st.rerun()
+            # Bouton Effacer et recommencer (en dessous)
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("🗑️ Effacer et recommencer", use_container_width=True, type="secondary", key="facture_clear_bottom"):
+                st.session_state.uploaded_file = None
+                st.session_state.show_ocr_results = False
+                st.session_state.ocr_result = None
+                st.rerun()
         
         st.markdown("</div>", unsafe_allow_html=True)
     
@@ -864,16 +873,6 @@ if st.session_state.mode == "facture":
 elif st.session_state.mode == "bdc":
     st.markdown("<div class='card'>", unsafe_allow_html=True)
     st.markdown("<h3 style='text-align:center'>📝 Scanner un Bon de Commande</h3>", unsafe_allow_html=True)
-    
-    # Bouton Réinitialiser si un fichier est déjà chargé
-    if st.session_state.uploaded_file is not None and st.session_state.show_ocr_results:
-        col1, col2 = st.columns([3, 1])
-        with col2:
-            if st.button("🗑️ Effacer et recommencer", type="secondary", use_container_width=True):
-                st.session_state.uploaded_file = None
-                st.session_state.show_ocr_results = False
-                st.session_state.ocr_result = None
-                st.rerun()
     
     uploaded = st.file_uploader("Téléchargez l'image du BDC", type=["jpg", "jpeg", "png"], 
                                 key="bdc_uploader")
@@ -975,7 +974,7 @@ elif st.session_state.mode == "bdc":
             st.text_area("Texte OCR", value=result.get("raw", ""), height=200, key="bdc_raw")
         st.markdown("</div>", unsafe_allow_html=True)
         
-        # Section export Google Sheets avec bouton Réinitialiser
+        # Section export Google Sheets
         st.markdown("<div class='card'>", unsafe_allow_html=True)
         st.markdown("<h4>📤 Export vers Google Sheets</h4>", unsafe_allow_html=True)
         
@@ -984,72 +983,64 @@ elif st.session_state.mode == "bdc":
         if ws is None:
             st.warning("⚠️ Google Sheets non configuré. Configurez les credentials dans les secrets.")
         else:
-            col1, col2, col3 = st.columns([2, 1, 1])
-            with col1:
-                if st.button("💾 Enregistrer dans Google Sheets", use_container_width=True, key="bdc_save"):
-                    try:
-                        # Vérifier que user_nom existe
-                        if not hasattr(st.session_state, 'user_nom') or not st.session_state.user_nom:
-                            st.error("❌ Erreur de session. Veuillez vous reconnecter.")
-                        else:
-                            # Préparer les données avec le nouvel ordre
-                            data_to_save = []
-                            for _, row in edited_df.iterrows():
-                                if str(row["Désignation"]).strip() and str(row["Qté"]).strip():
-                                    data_to_save.append([
-                                        date,
-                                        client,
-                                        numero,
-                                        adresse,
-                                        str(row["Désignation"]).strip(),
-                                        str(row["Qté"]).strip(),
-                                        st.session_state.user_nom
-                                    ])
+            if st.button("💾 Enregistrer dans Google Sheets", use_container_width=True, key="bdc_save"):
+                try:
+                    # Vérifier que user_nom existe
+                    if not hasattr(st.session_state, 'user_nom') or not st.session_state.user_nom:
+                        st.error("❌ Erreur de session. Veuillez vous reconnecter.")
+                    else:
+                        # Préparer les données avec le nouvel ordre
+                        data_to_save = []
+                        for _, row in edited_df.iterrows():
+                            if str(row["Désignation"]).strip() and str(row["Qté"]).strip():
+                                data_to_save.append([
+                                    date,
+                                    client,
+                                    numero,
+                                    adresse,
+                                    str(row["Désignation"]).strip(),
+                                    str(row["Qté"]).strip(),
+                                    st.session_state.user_nom
+                                ])
+                        
+                        if data_to_save:
+                            # Enregistrer sans doublons
+                            saved_count, duplicate_count = save_bdc_without_duplicates(ws, {
+                                "date": date,
+                                "client": client,
+                                "numero": numero,
+                                "adresse_livraison": adresse,
+                                "articles": edited_df.to_dict('records')
+                            }, st.session_state.user_nom)
                             
-                            if data_to_save:
-                                # Enregistrer sans doublons
-                                saved_count, duplicate_count = save_bdc_without_duplicates(ws, {
-                                    "date": date,
-                                    "client": client,
-                                    "numero": numero,
-                                    "adresse_livraison": adresse,
-                                    "articles": edited_df.to_dict('records')
-                                }, st.session_state.user_nom)
+                            if saved_count > 0:
+                                st.session_state.bdc_scans += 1
+                                st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succès!")
+                                st.info(f"📝 Format enregistré: Date émission | Client/Facturation | Numéro BDC | Adresse livraison | Article | Qte | Editeur")
+                                st.info(f"👤 Enregistré par: {st.session_state.user_nom}")
                                 
-                                if saved_count > 0:
-                                    st.session_state.bdc_scans += 1
-                                    st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succès!")
-                                    st.info(f"📝 Format enregistré: Date émission | Client/Facturation | Numéro BDC | Adresse livraison | Article | Qte | Editeur")
-                                    st.info(f"👤 Enregistré par: {st.session_state.user_nom}")
+                                # Bouton pour effacer et recommencer
+                                if st.button("🗑️ Effacer et recommencer", use_container_width=True, type="secondary"):
+                                    st.session_state.uploaded_file = None
+                                    st.session_state.show_ocr_results = False
+                                    st.session_state.ocr_result = None
+                                    st.rerun()
                                     
-                                    # Bouton pour charger un autre fichier
-                                    if st.button("📤 Charger un autre fichier", type="secondary"):
-                                        st.session_state.uploaded_file = None
-                                        st.session_state.show_ocr_results = False
-                                        st.session_state.ocr_result = None
-                                        st.rerun()
-                                        
-                                elif duplicate_count > 0:
-                                    st.warning("⚠️ Ce BDC existe déjà dans la base de données.")
-                                else:
-                                    st.warning("⚠️ Aucune donnée valide à enregistrer")
-                                    
-                    except Exception as e:
-                        st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
+                            elif duplicate_count > 0:
+                                st.warning("⚠️ Ce BDC existe déjà dans la base de données.")
+                            else:
+                                st.warning("⚠️ Aucune donnée valide à enregistrer")
+                                
+                except Exception as e:
+                    st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
             
-            with col2:
-                if st.button("🗑️ Effacer", type="secondary", use_container_width=True, key="bdc_clear"):
-                    st.session_state.uploaded_file = None
-                    st.session_state.show_ocr_results = False
-                    st.session_state.ocr_result = None
-                    st.rerun()
-            
-            with col3:
-                if st.button("📤 Nouveau", type="secondary", use_container_width=True, key="bdc_new"):
-                    st.session_state.uploaded_file = None
-                    st.session_state.show_ocr_results = False
-                    st.session_state.ocr_result = None
-                    st.rerun()
+            # Bouton Effacer et recommencer (en dessous)
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("🗑️ Effacer et recommencer", use_container_width=True, type="secondary", key="bdc_clear_bottom"):
+                st.session_state.uploaded_file = None
+                st.session_state.show_ocr_results = False
+                st.session_state.ocr_result = None
+                st.rerun()
         
         st.markdown("</div>", unsafe_allow_html=True)
     
