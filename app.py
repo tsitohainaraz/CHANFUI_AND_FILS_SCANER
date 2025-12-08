@@ -440,8 +440,6 @@ def get_invoice_worksheet():
 
 #Suppresion d erreur Nan
 def save_invoice_without_duplicates(ws, invoice_data, user_nom):
-try:
-# Fonction pour nettoyer les valeurs NaN / None / inf
 def clean_value(v):
 try:
 if v is None:
@@ -455,21 +453,21 @@ return ""
 
     # Récupérer toutes les données existantes
     all_values = ws.get_all_values()
-    
+
     # Vérifier les doublons
     for row in all_values:
         if len(row) >= 5:
             existing_invoice = row[0] if len(row) > 0 else ""
             existing_bdc = row[3] if len(row) > 3 else ""
-            
+
             if (existing_invoice == invoice_data["facture"] and 
                 existing_bdc == invoice_data["bon_commande"]):
-                return 0, 1  # 0 ajouté, 1 doublon
-    
+                return 0, 1  # doublon
+
     # Préparer les données
     today_str = datetime.now().strftime("%d/%m/%Y")
     timestamp = datetime.now().strftime("%d/%m/%Y %H:%M")
-    
+
     rows_to_add = []
     for item in invoice_data["articles"]:
         row = [
@@ -483,18 +481,19 @@ return ""
             timestamp,
             user_nom
         ]
-        
+
         # Nettoyage pour éviter NaN → ""
         row = [clean_value(x) for x in row]
         rows_to_add.append(row)
-    
+
     if rows_to_add:
         ws.append_rows(rows_to_add)
         return len(rows_to_add), 0
-    
+
     return 0, 0
-except Exception as e:
-    raise Exception(f"Erreur lors de l'enregistrement: {str(e)}")
+
+    except Exception as e:
+        raise Exception(f"Erreur lors de l'enregistrement: {str(e)}")
 #Fin Nan correction 
 
 def save_bdc_without_duplicates(ws, bdc_data, user_nom):
@@ -964,4 +963,5 @@ st.markdown("---")
 st.markdown(f"<p style='text-align:center;color:{PALETTE['muted']};font-size:0.8em'>"
             f"Session: {st.session_state.user_nom} | Factures: {st.session_state.invoice_scans} | BDC: {st.session_state.bdc_scans}</p>", 
             unsafe_allow_html=True)
+
 
