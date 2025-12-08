@@ -455,32 +455,33 @@ def save_invoice_without_duplicates(ws, invoice_data, user_nom):
         # Récupérer toutes les données existantes
         all_values = ws.get_all_values()
         
-        # Vérifier les doublons
+        # Vérifier les doublons (basé sur facture + bon de commande)
         for row in all_values:
             if len(row) >= 5:
-                existing_invoice = row[0] if len(row) > 0 else ""
+                existing_mois = row[0] if len(row) > 0 else ""
                 existing_bdc = row[3] if len(row) > 3 else ""
+                existing_article = row[5] if len(row) > 5 else ""
 
-                if (existing_invoice == invoice_data["facture"] and 
-                    existing_bdc == invoice_data["bon_commande"]):
+                if (existing_mois == invoice_data["mois"] and 
+                    existing_bdc == invoice_data["bon_commande"] and
+                    existing_article in [item["article"] for item in invoice_data["articles"]]):
                     return 0, 1  # doublon
 
-        # Préparer les données
+        # Préparer les données - NOUVEL ORDRE POUR FACTURES
+        # Mois | Doit | Date | Bon de commande | Adresse de livraison | Article | Bouteille | Editeur
         today_str = datetime.now().strftime("%d/%m/%Y")
-        timestamp = datetime.now().strftime("%d/%m/%Y %H:%M")
-
+        
         rows_to_add = []
         for item in invoice_data["articles"]:
             row = [
-                invoice_data["facture"],
-                invoice_data["doit"],
-                today_str,
-                invoice_data["bon_commande"],
-                invoice_data["adresse"],
-                item["article"],
-                item["bouteilles"],
-                timestamp,
-                user_nom
+                invoice_data["mois"],           # Colonne A: Mois
+                invoice_data["doit"],           # Colonne B: Doit
+                today_str,                      # Colonne C: Date d'enregistrement
+                invoice_data["bon_commande"],   # Colonne D: Bon de commande
+                invoice_data["adresse"],        # Colonne E: Adresse de livraison
+                item["article"],                # Colonne F: Article
+                item["bouteilles"],             # Colonne G: Bouteilles
+                user_nom                        # Colonne H: Editeur
             ]
 
             # Nettoyage pour éviter NaN
@@ -501,30 +502,34 @@ def save_bdc_without_duplicates(ws, bdc_data, user_nom):
         # Récupérer toutes les données existantes
         all_values = ws.get_all_values()
         
-        # Vérifier les doublons
+        # Vérifier les doublons (basé sur numéro BDC + client)
         for row in all_values:
             if len(row) >= 5:
-                existing_bdc = row[0] if len(row) > 0 else ""
-                existing_client = row[1] if len(row) > 1 else ""
+                existing_bdc = row[2] if len(row) > 2 else ""  # Numéro BDC est en colonne C
+                existing_client = row[1] if len(row) > 1 else ""  # Client est en colonne B
                 
                 if (existing_bdc == bdc_data["numero"] and 
                     existing_client == bdc_data["client"]):
-                    return 0, 1  # 0 ajouté, 1 doublon
+                    # Vérifier aussi les articles spécifiques
+                    existing_article = row[4] if len(row) > 4 else ""
+                    for item in bdc_data["articles"]:
+                        if item["Désignation"] in existing_article:
+                            return 0, 1  # doublon
         
-        # Préparer les données
-        timestamp = datetime.now().strftime("%d/%m/%Y %H:%M")
+        # Préparer les données - NOUVEL ORDRE POUR BDC
+        # Date émission | Client/Facturation | Numéro BDC | Adresse livraison | Qte | Editeur
+        # Note: Pour BDC, nous avons "Désignation" mais vous avez demandé seulement "Qte"
+        # Donc je mets "Désignation" dans la colonne Qte comme texte descriptif
         
         rows_to_add = []
         for item in bdc_data["articles"]:
             rows_to_add.append([
-                bdc_data["numero"],
-                bdc_data["client"],
-                bdc_data["date"],
-                bdc_data["adresse_livraison"],
-                item["Désignation"],
-                item["Qté"],
-                timestamp,
-                user_nom
+                bdc_data["date"],               # Colonne A: Date émission
+                bdc_data["client"],             # Colonne B: Client/Facturation
+                bdc_data["numero"],             # Colonne C: Numéro BDC
+                bdc_data["adresse_livraison"],  # Colonne D: Adresse livraison
+                f"{item['Désignation']} ({item['Qté']})",  # Colonne E: Qte (avec désignation)
+                user_nom                        # Colonne F: Editeur
             ])
         
         if rows_to_add:
@@ -637,13 +642,13 @@ if st.session_state.mode == "facture":
                     
                     col1, col2 = st.columns(2)
                     with col1:
-                        facture = st.text_input("Numéro de facture", value=result.get("facture", ""))
-                        adresse = st.text_input("Adresse de livraison", value=result.get("adresse", ""))
+                        mois = st.text_input("Mois", value=result.get("mois", ""))
+                        doit = st.text_input("DOIT", value=result.get("doit", ""))
+                        bon_commande = st.text_input("Bon de commande", value=result.get("bon_commande", ""))
                     
                     with col2:
-                        doit = st.text_input("DOIT", value=result.get("doit", ""))
-                        mois = st.text_input("Mois", value=result.get("mois", ""))
-                        bon_commande = st.text_input("Bon de commande", value=result.get("bon_commande", ""))
+                        adresse = st.text_input("Adresse de livraison", value=result.get("adresse", ""))
+                        facture = st.text_input("Numéro de facture (pour référence)", value=result.get("facture", ""))
                     
                     st.markdown("</div>", unsafe_allow_html=True)
                     
@@ -707,41 +712,40 @@ if st.session_state.mode == "facture":
                                 if not hasattr(st.session_state, 'user_nom') or not st.session_state.user_nom:
                                     st.error("❌ Erreur de session. Veuillez vous reconnecter.")
                                 else:
-                                    # Préparer les données
+                                    # Préparer les données avec le nouvel ordre
                                     data_to_save = []
                                     for _, row in edited_df.iterrows():
                                         if str(row["article"]).strip() and str(row["bouteilles"]).strip():
                                             data_to_save.append([
-                                                facture,
+                                                mois,
                                                 doit,
                                                 datetime.now().strftime("%d/%m/%Y"),
                                                 bon_commande,
                                                 adresse,
                                                 str(row["article"]).strip(),
                                                 str(row["bouteilles"]).strip(),
-                                                datetime.now().strftime("%d/%m/%Y %H:%M"),
                                                 st.session_state.user_nom
                                             ])
                                     
                                     if data_to_save:
                                         # Enregistrer sans doublons
                                         saved_count, duplicate_count = save_invoice_without_duplicates(ws, {
-                                            "facture": facture,
-                                            "doit": doit,
-                                            "adresse": adresse,
                                             "mois": mois,
+                                            "doit": doit,
                                             "bon_commande": bon_commande,
+                                            "adresse": adresse,
                                             "articles": edited_df.to_dict('records')
                                         }, st.session_state.user_nom)
                                         
                                         if saved_count > 0:
                                             st.session_state.invoice_scans += 1
-                                            st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succuis!")
+                                            st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succès!")
                                             
                                             if duplicate_count > 0:
                                                 st.info(f"⚠️ {duplicate_count} ligne(s) en doublon non ajoutée(s)")
                                             
-                                            # Utiliser st.session_state.user_nom directement
+                                            # Afficher le format d'enregistrement
+                                            st.info(f"📝 Format enregistré: Mois | Doit | Date | Bon de commande | Adresse | Article | Bouteilles | Editeur")
                                             st.info(f"👤 Enregistré par: {st.session_state.user_nom}")
                                         elif duplicate_count > 0:
                                             st.warning("⚠️ Cette facture existe déjà dans la base de données.")
@@ -815,11 +819,11 @@ elif st.session_state.mode == "bdc":
                     
                     col1, col2 = st.columns(2)
                     with col1:
-                        numero = st.text_input("Numéro BDC", value=result.get("numero", "25011956"))
+                        date = st.text_input("Date émission", value=result.get("date", "04/11/2025"))
                         client = st.text_input("Client/Facturation", value=result.get("client", "S2M"))
                     
                     with col2:
-                        date = st.text_input("Date émission", value=result.get("date", "04/11/2025"))
+                        numero = st.text_input("Numéro BDC", value=result.get("numero", "25011956"))
                         adresse = st.text_input("Adresse livraison", value=result.get("adresse_livraison", "SCORE TALATAMATY"))
                     
                     st.markdown("</div>", unsafe_allow_html=True)
@@ -884,39 +888,38 @@ elif st.session_state.mode == "bdc":
                                 if not hasattr(st.session_state, 'user_nom') or not st.session_state.user_nom:
                                     st.error("❌ Erreur de session. Veuillez vous reconnecter.")
                                 else:
-                                    # Préparer les données
+                                    # Préparer les données avec le nouvel ordre
                                     data_to_save = []
                                     for _, row in edited_df.iterrows():
                                         if str(row["Désignation"]).strip() and str(row["Qté"]).strip():
                                             data_to_save.append([
-                                                numero,
-                                                client,
                                                 date,
+                                                client,
+                                                numero,
                                                 adresse,
-                                                str(row["Désignation"]).strip(),
-                                                str(row["Qté"]).strip(),
-                                                datetime.now().strftime("%d/%m/%Y %H:%M"),
+                                                f"{str(row['Désignation']).strip()} ({str(row['Qté']).strip()})",
                                                 st.session_state.user_nom
                                             ])
                                     
                                     if data_to_save:
                                         # Enregistrer sans doublons
                                         saved_count, duplicate_count = save_bdc_without_duplicates(ws, {
-                                            "numero": numero,
-                                            "client": client,
                                             "date": date,
+                                            "client": client,
+                                            "numero": numero,
                                             "adresse_livraison": adresse,
                                             "articles": edited_df.to_dict('records')
                                         }, st.session_state.user_nom)
                                         
                                         if saved_count > 0:
                                             st.session_state.bdc_scans += 1
-                                            st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succuis!")
+                                            st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succès!")
                                             
                                             if duplicate_count > 0:
                                                 st.info(f"⚠️ {duplicate_count} ligne(s) en doublon non ajoutée(s)")
                                             
-                                            # Utiliser st.session_state.user_nom directement
+                                            # Afficher le format d'enregistrement
+                                            st.info(f"📝 Format enregistré: Date émission | Client/Facturation | Numéro BDC | Adresse livraison | Qte | Editeur")
                                             st.info(f"👤 Enregistré par: {st.session_state.user_nom}")
                                         elif duplicate_count > 0:
                                             st.warning("⚠️ Ce BDC existe déjà dans la base de données.")
@@ -964,4 +967,3 @@ st.markdown("---")
 st.markdown(f"<p style='text-align:center;color:{PALETTE['muted']};font-size:0.8em'>"
             f"Session: {st.session_state.user_nom} | Factures: {st.session_state.invoice_scans} | BDC: {st.session_state.bdc_scans}</p>", 
             unsafe_allow_html=True)
-
