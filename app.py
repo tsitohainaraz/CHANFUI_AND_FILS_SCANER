@@ -38,10 +38,10 @@ BRAND_SUB = "Google Vision — Edition Premium"
 # AUTH (updated)
 # ---------------------------
 AUTHORIZED_USERS = {
-    "Latitia": "CFF1",
-    "Elodie": "CFF2",
-    "Pathou": "CFF3",
-    "Admin": "CFF4"
+    "LATITIA": "CFF1",
+    "ELODIE": "CFF2",
+    "PATHOU": "CFF3",
+    "ADMIN": "CFF4"
 }
 
 # ---------------------------
@@ -964,3 +964,4 @@ st.markdown("---")
 st.markdown(f"<p style='text-align:center;color:{PALETTE['muted']};font-size:0.8em'>"
             f"Session: {st.session_state.user_nom} | Factures: {st.session_state.invoice_scans} | BDC: {st.session_state.bdc_scans}</p>", 
             unsafe_allow_html=True)
+
