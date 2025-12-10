@@ -16,6 +16,7 @@ from google.oauth2.service_account import Credentials as SA_Credentials
 import gspread
 from googleapiclient.discovery import build
 import pandas as pd
+import json
 
 # ---------------------------
 # Page config
@@ -125,6 +126,39 @@ st.markdown(
         text-align: center;
         font-size: 1.1rem;
         margin-top: 0;
+    }}
+    .client-badge {{
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        margin: 2px;
+    }}
+    .badge-supermaki {{
+        background-color: #FF6B6B;
+        color: white;
+    }}
+    .badge-leader {{
+        background-color: #4ECDC4;
+        color: white;
+    }}
+    .badge-ulys {{
+        background-color: #45B7D1;
+        color: white;
+    }}
+    .scan-option-card {{
+        border: 2px solid transparent;
+        transition: all 0.3s ease;
+        cursor: pointer;
+    }}
+    .scan-option-card:hover {{
+        border-color: var(--gold);
+        transform: translateY(-2px);
+    }}
+    .scan-option-card.selected {{
+        border-color: var(--gold);
+        background-color: rgba(212, 175, 55, 0.05);
     }}
     </style>
     """,
@@ -280,151 +314,267 @@ def invoice_pipeline(image_bytes: bytes):
     }
 
 # ---------------------------
-# BDC Extraction Functions
+# NOUVELLES FONCTIONS BDC SPÉCIFIQUES PAR CLIENT
 # ---------------------------
-def extract_bdc_number(text: str) -> str:
-    patterns = [
-        r"Bon\s*de\s*commande\s*n[°o]?\s*([0-9]{7,8})",
-        r"BDC\s*n[°o]?\s*([0-9]{7,8})",
-        r"n[°o]\s*([0-9]{7,8})",
-    ]
-    for p in patterns:
-        m = re.search(p, text, flags=re.I)
-        if m:
-            return m.group(1).strip()
-    m = re.search(r"\b(25011956|25011955)\b", text)
-    if m:
-        return m.group(1)
-    return "25011956"
 
-def extract_bdc_date(text: str) -> str:
-    m = re.search(r"date\s*émission\s*(\d{1,2}\s*[/\-]\s*\d{1,2}\s*[/\-]\s*\d{2,4})", text, flags=re.I)
-    if m:
-        date_str = re.sub(r"\s+", "", m.group(1))
-        parts = re.split(r"[/\-]", date_str)
-        if len(parts) == 3:
-            day = parts[0].zfill(2)
-            mon = parts[1].zfill(2)
-            year = parts[2] if len(parts[2]) == 4 else "20" + parts[2]
-            return f"{day}/{mon}/{year}"
+def extract_bdc_supermaki(text: str):
+    """Extraction pour SUPERMAKI"""
+    result = {
+        "client": "SUPERMAKI",
+        "numero": "",
+        "date": "",
+        "adresse_livraison": "",
+        "adresse_fournisseur": "",
+        "articles": []
+    }
     
-    m = re.search(r"\b(\d{1,2}\s*[/\-]\s*\d{1,2}\s*[/\-]\s*2025)\b", text)
-    if m:
-        date_str = re.sub(r"\s+", "", m.group(1))
-        return date_str
+    # Extraire numéro BDC
+    bdc_match = re.search(r"Bon de commande n[°o]\s*(\d+)", text, re.I)
+    if bdc_match:
+        result["numero"] = bdc_match.group(1)
     
-    return datetime.now().strftime("%d/%m/%Y")
-
-def extract_bdc_client(text: str) -> str:
-    m = re.search(r"Adresse\s*facturation\s*(S2M|SZM|2M)", text, flags=re.I)
-    if m:
-        return m.group(1).strip()
+    # Extraire date
+    date_match = re.search(r"Date diffusion\s*(\d{2}/\d{2}/\d{4})", text, re.I)
+    if date_match:
+        result["date"] = date_match.group(1)
     
-    m = re.search(r"\b(S2M|SZM|2M)\b", text)
-    if m:
-        return m.group(1)
-    
-    return "S2M"
-
-def extract_bdc_delivery_address(text: str) -> str:
+    # Extraire adresse livraison
     lines = text.split('\n')
     for i, line in enumerate(lines):
-        if "adresse livraison" in line.lower():
+        if "adresse de livraison" in line.lower():
+            if i + 1 < len(lines):
+                result["adresse_livraison"] = lines[i + 1].strip()
+                break
+    
+    # Extraire adresse fournisseur
+    for i, line in enumerate(lines):
+        if "adresse fournisseur" in line.lower():
+            if i + 1 < len(lines):
+                result["adresse_fournisseur"] = lines[i + 1].strip()
+                break
+    
+    # Extraire les articles (format spécifique SUPERMAKI)
+    table_pattern = r"REF\s+EAN\s+Désignation\s+PGB\s+Nb Colis\s+Quantité\s+PA Unitaire\s+PA Fact\s+TVA"
+    lines = text.split('\n')
+    in_table = False
+    current_article = {}
+    
+    for line in lines:
+        if re.search(table_pattern, line, re.I):
+            in_table = True
+            continue
+        
+        if in_table and line.strip() and not line.startswith("---"):
+            # Chercher EAN
+            ean_match = re.search(r"(\d{13})", line)
+            if ean_match:
+                ean = ean_match.group(1)
+                # Chercher désignation après EAN
+                parts = line.split(ean)
+                if len(parts) > 1:
+                    designation = parts[1].strip()
+                    # Chercher quantité
+                    qty_match = re.search(r"(\d+)\s+\d+$", line)
+                    if qty_match:
+                        qte = qty_match.group(1)
+                        result["articles"].append({
+                            "EAN": ean,
+                            "Désignation": designation,
+                            "Qté": qte,
+                            "Type": "article"
+                        })
+            # Chercher consigne
+            elif "CONS" in line and "CHANFOUI" in line.upper():
+                cons_match = re.search(r"(\d+)\s+(\d{3,})", line)
+                if cons_match:
+                    result["articles"].append({
+                        "EAN": "0000010000373",
+                        "Désignation": "CONS 2000 CHANFOUI",
+                        "Qté": cons_match.group(1),
+                        "Type": "consigne"
+                    })
+    
+    return result
+
+def extract_bdc_leader_price(text: str):
+    """Extraction pour LEADER PRICE"""
+    result = {
+        "client": "LEADER PRICE",
+        "numero": "",
+        "date": "",
+        "adresse_livraison": "",
+        "articles": []
+    }
+    
+    # Extraire numéro BDC
+    bdc_match = re.search(r"N[°o]\s+de\s+Commande\s+(\S+)", text, re.I)
+    if bdc_match:
+        result["numero"] = bdc_match.group(1)
+    
+    # Extraire date
+    date_match = re.search(r"Date\s+(\d{2}/\d{2}/\d{2})", text, re.I)
+    if date_match:
+        date_str = date_match.group(1)
+        # Convertir format JJ/MM/AA en JJ/MM/AAAA
+        day, month, year = date_str.split('/')
+        year = "20" + year if len(year) == 2 else year
+        result["date"] = f"{day}/{month}/{year}"
+    
+    # Extraire adresse livraison
+    lines = text.split('\n')
+    for i, line in enumerate(lines):
+        if "a livrer a" in line.lower() or "à livrer à" in line.lower():
             address_lines = []
             for j in range(1, 4):
                 if i + j < len(lines) and lines[i + j].strip():
                     address_lines.append(lines[i + j].strip())
             if address_lines:
-                return " ".join(address_lines[:2])
+                result["adresse_livraison"] = " ".join(address_lines)
+                break
     
-    m = re.search(r"(SCORE\s*TALATAMATY|SCORE\s*TALATAJATY)", text, flags=re.I)
-    if m:
-        return m.group(1)
+    # Extraire les articles (format spécifique LEADER PRICE)
+    lines = text.split('\n')
+    in_table = False
     
-    return "SCORE TALATAMATY"
-
-def extract_designation_qte_from_ocr(text: str):
-    items = []
-    lines = [l.strip() for l in text.split('\n') if l.strip()]
-    
-    table_start = -1
-    for i, line in enumerate(lines):
-        if any(keyword in line.lower() for keyword in ["désignation", "designation", "qte", "qté"]) or \
-           (re.search(r"000133[0-9]{3}", line) and any(w in line.lower() for w in ["vin", "cote", "blanc", "rouge"])):
-            table_start = i
-            break
-    
-    if table_start != -1:
-        current_designation = ""
-        for i in range(table_start, min(table_start + 20, len(lines))):
-            line = lines[i]
-            
-            if any(keyword in line.lower() for keyword in ["vin de madagascar", "cote de flanar", "coteaux ambalavao", "75 cl", "75 d"]):
-                current_designation = line
-                
-                qte_found = ""
-                qte_match = re.search(r"(\d+)[.,](\d{3})", line)
-                if qte_match:
-                    qte_found = qte_match.group(1) + "." + qte_match.group(2)
-                else:
-                    for j in range(1, 4):
-                        if i + j < len(lines):
-                            next_line = lines[i + j]
-                            qte_match = re.search(r"(\d+)[.,](\d{3})", next_line)
-                            if qte_match:
-                                qte_found = qte_match.group(1) + "." + qte_match.group(2)
-                                break
-                
-                if current_designation and qte_found:
-                    clean_desig = re.sub(r"\d{6,}\s*", "", current_designation)
-                    clean_desig = re.sub(r"\s{2,}", " ", clean_desig).strip()
-                    clean_desig = re.sub(r"^\d+\s*", "", clean_desig)
-                    
-                    if clean_desig and len(clean_desig) > 10:
-                        items.append({
-                            "Désignation": clean_desig,
-                            "Qté": qte_found
-                        })
-                    current_designation = ""
-    
-    if not items:
-        patterns = [
-            (r"vin de madagascar.*?75.*?(?:cl|d).*?blanc.*?(\d+[.,]\d{3})", "vin de madagascar 75 cl blanc"),
-            (r"cote de flanar.*?rouge.*?75.*?(?:cl|d).*?(\d+[.,]\d{3})", "cote de flanar rouge 75 cl"),
-            (r"coteaux.*?ambalavao.*?cuvee.*?special.*?(\d+[.,]\d{3})", "coteaux ambalavao cuvee special"),
-        ]
+    for line in lines:
+        # Chercher le début du tableau
+        if any(x in line.lower() for x in ["réf", "désignation", "qté cdée"]):
+            in_table = True
+            continue
         
-        for pattern, default_desig in patterns:
-            match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
-            if match:
-                qte = match.group(1).replace(",", ".")
-                items.append({
-                    "Désignation": default_desig,
-                    "Qté": qte
-                })
+        if in_table and line.strip() and not any(x in line.lower() for x in ["total", "signature", "cachet"]):
+            # Format: Réf | Désignation | Qté Cdée | Qté livrée | Condiment | Px unitaire | Rem | Montant HT
+            parts = re.split(r'\s{2,}', line.strip())
+            if len(parts) >= 3:
+                ref = parts[0].strip()
+                designation = parts[1].strip()
+                qte = parts[2].strip().replace(".000", "").replace(",", ".")
+                
+                # Filtrer les lignes vides ou sans quantité
+                if qte and qte != "Plèces" and not qte.endswith(".00"):
+                    result["articles"].append({
+                        "Réf": ref,
+                        "Désignation": designation,
+                        "Qté": qte,
+                        "Type": "consigne" if "CONSIGNE" in designation.upper() else "article"
+                    })
     
-    if not items:
-        items = [
-            {"Désignation": "vin de madagascar 75 cl blanc", "Qté": "12.000"},
-            {"Désignation": "cote de flanar rouge 75 cl", "Qté": "24.000"},
-            {"Désignation": "coteaux ambalavao cuvee special", "Qté": "12.000"}
-        ]
-    
-    return items
+    return result
 
-def bdc_pipeline(image_bytes: bytes):
+def extract_bdc_ulys(text: str):
+    """Extraction pour ULYS"""
+    result = {
+        "client": "ULYS",
+        "numero": "",
+        "date": "",
+        "adresse_livraison": "",
+        "nom_magasin": "",
+        "nom_fournisseur": "",
+        "articles": []
+    }
+    
+    # Extraire numéro BDC
+    bdc_match = re.search(r"N[°o]\s+(\d{10})", text)
+    if bdc_match:
+        result["numero"] = bdc_match.group(1)
+    
+    # Extraire date
+    date_match = re.search(r"Date de la Commande\s*:\s*(\d{2}\.\d{2}\.\d{4})", text)
+    if date_match:
+        date_str = date_match.group(1).replace(".", "/")
+        result["date"] = date_str
+    
+    # Extraire nom magasin
+    magasin_match = re.search(r"Nom du Magasin\s*:\s*(.+)", text, re.I)
+    if magasin_match:
+        result["nom_magasin"] = magasin_match.group(1).strip()
+        result["adresse_livraison"] = result["nom_magasin"]
+    
+    # Extraire nom fournisseur
+    fournisseur_match = re.search(r"Nom du Fournisseur\s*:\s*(.+)", text, re.I)
+    if fournisseur_match:
+        result["nom_fournisseur"] = fournisseur_match.group(1).strip()
+    
+    # Extraire les articles (format spécifique ULYS)
+    lines = text.split('\n')
+    in_table = False
+    
+    for i, line in enumerate(lines):
+        # Chercher le début du tableau (header avec GTIN, Article No, etc.)
+        if "GTIN" in line and "Article No" in line and "Description" in line:
+            in_table = True
+            continue
+        
+        if in_table and line.strip() and not any(x in line.lower() for x in ["total", "document", "page"]):
+            # Format: GTIN | Article No | Description | Unité | Qté | Conv. Factor | Date Livraison
+            # OU Catégorie (122111 - VINS ROUGES)
+            
+            # Vérifier si c'est une catégorie
+            if re.match(r'\d{6}\s*-\s*[A-Z\s]+', line):
+                current_category = line.strip()
+                continue
+            
+            # C'est une ligne d'article
+            # Chercher GTIN (13 chiffres)
+            gtin_match = re.search(r'(\d{13})', line)
+            if gtin_match:
+                gtin = gtin_match.group(1)
+                # Chercher quantité
+                qty_match = re.search(r'(\d+)\s+\d+\s*[PAQ/PC]', line)
+                if qty_match:
+                    qte = qty_match.group(1)
+                    # Chercher description
+                    # Enlever GTIN, Article No, etc. pour trouver description
+                    temp_line = line.replace(gtin, "")
+                    # Chercher le prochain nombre (Article No)
+                    temp_line = re.sub(r'\d{8}', '', temp_line, 1)
+                    # Prendre le texte jusqu'à "PAQ" ou "/PC"
+                    desc_match = re.search(r'([A-Z\s]+?)\s+(PAQ|/PC)', temp_line)
+                    if desc_match:
+                        designation = desc_match.group(1).strip()
+                        result["articles"].append({
+                            "GTIN": gtin,
+                            "Désignation": designation,
+                            "Qté": qte,
+                            "Unité": desc_match.group(2),
+                            "Type": "article"
+                        })
+    
+    return result
+
+def bdc_pipeline(image_bytes: bytes, client_type: str = "auto"):
+    """Pipeline BDC principal avec détection automatique ou choix spécifique"""
     cleaned = preprocess_image(image_bytes)
     raw = google_vision_ocr(cleaned)
     raw = clean_text(raw)
     
-    return {
-        "raw": raw,
-        "numero": extract_bdc_number(raw),
-        "client": extract_bdc_client(raw),
-        "date": extract_bdc_date(raw),
-        "adresse_livraison": extract_bdc_delivery_address(raw),
-        "articles": extract_designation_qte_from_ocr(raw)
-    }
+    # Détection automatique du client si non spécifié
+    if client_type == "auto":
+        if "SUPERMAKI" in raw or "AMBOHIBAO" in raw:
+            client_type = "SUPERMAKI"
+        elif "LEADER PRICE" in raw or "D.L.P.M" in raw:
+            client_type = "LEADER PRICE"
+        elif "ULYS" in raw or "SUPER U" in raw:
+            client_type = "ULYS"
+        else:
+            client_type = "SUPERMAKI"  # Par défaut
+    
+    # Appeler la fonction d'extraction appropriée
+    if client_type == "SUPERMAKI":
+        result = extract_bdc_supermaki(raw)
+    elif client_type == "LEADER PRICE":
+        result = extract_bdc_leader_price(raw)
+    elif client_type == "ULYS":
+        result = extract_bdc_ulys(raw)
+    else:
+        # Fallback à l'ancienne méthode
+        result = extract_bdc_supermaki(raw)
+    
+    # Ajouter le texte brut OCR
+    result["raw"] = raw
+    result["client_type"] = client_type
+    
+    return result
 
 # ---------------------------
 # Google Sheets Functions
@@ -543,23 +693,27 @@ def save_bdc_without_duplicates(ws, bdc_data, user_nom):
                 for item in bdc_data["articles"]:
                     if (existing_bdc == bdc_data["numero"] and 
                         existing_client == bdc_data["client"] and
-                        existing_article == item["Désignation"]):
+                        existing_article == item.get("Désignation", "")):
                         return 0, 1  # doublon
         
         # Préparer les données - NOUVEL ORDRE POUR BDC
         # Date émission | Client/Facturation | Numéro BDC | Adresse livraison | Article | Qte | Editeur
-        
         rows_to_add = []
         for item in bdc_data["articles"]:
-            rows_to_add.append([
-                bdc_data["date"],               # Colonne A: Date émission
-                bdc_data["client"],             # Colonne B: Client/Facturation
-                bdc_data["numero"],             # Colonne C: Numéro BDC
-                bdc_data["adresse_livraison"],  # Colonne D: Adresse livraison
-                item["Désignation"],            # Colonne E: Article (Désignation)
-                item["Qté"],                    # Colonne F: Qte
-                user_nom                        # Colonne G: Editeur
-            ])
+            # Utiliser Désignation ou Article selon ce qui existe
+            designation = item.get("Désignation", item.get("article", ""))
+            qte = item.get("Qté", item.get("bouteilles", ""))
+            
+            if designation and qte:
+                rows_to_add.append([
+                    bdc_data.get("date", ""),               # Colonne A: Date émission
+                    bdc_data.get("client", ""),             # Colonne B: Client/Facturation
+                    bdc_data.get("numero", ""),             # Colonne C: Numéro BDC
+                    bdc_data.get("adresse_livraison", ""),  # Colonne D: Adresse livraison
+                    str(designation).strip(),               # Colonne E: Article (Désignation)
+                    str(qte).strip(),                       # Colonne F: Qte
+                    user_nom                                # Colonne G: Editeur
+                ])
         
         if rows_to_add:
             ws.append_rows(rows_to_add)
@@ -589,18 +743,19 @@ if "show_ocr_results" not in st.session_state:
     st.session_state.show_ocr_results = False
 if "ocr_result" not in st.session_state:
     st.session_state.ocr_result = None
+if "selected_client_type" not in st.session_state:
+    st.session_state.selected_client_type = "auto"
+if "bdc_client_type" not in st.session_state:
+    st.session_state.bdc_client_type = None
 
 # ---------------------------
 # Header avec logo et titre côte à côte
 # ---------------------------
-# Créer un conteneur pour le logo et le titre
 col_logo, col_title = st.columns([1, 3])
 with col_logo:
-    # Vérifier si le fichier logo existe
     if os.path.exists(LOGO_FILENAME):
         st.image(LOGO_FILENAME, width=100)
     else:
-        # Fallback si le logo n'existe pas
         st.markdown("🍷")
 
 with col_title:
@@ -657,7 +812,7 @@ if st.session_state.mode is None:
     st.stop()
 
 # ---------------------------
-# Facture Mode
+# Facture Mode (inchangé)
 # ---------------------------
 if st.session_state.mode == "facture":
     st.markdown("<div class='card'>", unsafe_allow_html=True)
@@ -868,13 +1023,98 @@ if st.session_state.mode == "facture":
             st.rerun()
 
 # ---------------------------
-# BDC Mode
+# NOUVEAU MODE BDC AVEC CHOIX DE CLIENT
 # ---------------------------
 elif st.session_state.mode == "bdc":
-    st.markdown("<div class='card'>", unsafe_allow_html=True)
-    st.markdown("<h3 style='text-align:center'>📝 Scanner un Bon de Commande</h3>", unsafe_allow_html=True)
+    # Section de sélection du type de BDC
+    if not st.session_state.bdc_client_type:
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        st.markdown("<h3 style='text-align:center'>📝 Sélectionnez le type de Bon de Commande</h3>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center'>Choisissez le client correspondant à votre BDC</p>", unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.markdown("<div class='scan-option-card'>", unsafe_allow_html=True)
+            st.markdown("<h4 style='text-align:center'>🍷 SUPERMAKI</h4>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align:center;font-size:0.9em'>Format propre avec tableaux spécifiques</p>", unsafe_allow_html=True)
+            if st.button("Sélectionner SUPERMAKI", key="select_supermaki", use_container_width=True):
+                st.session_state.bdc_client_type = "SUPERMAKI"
+                st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown("<div class='scan-option-card'>", unsafe_allow_html=True)
+            st.markdown("<h4 style='text-align:center'>🏪 LEADER PRICE</h4>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align:center;font-size:0.9em'>Format spécifique avec colonnes Réf/Désignation</p>", unsafe_allow_html=True)
+            if st.button("Sélectionner LEADER PRICE", key="select_leader", use_container_width=True):
+                st.session_state.bdc_client_type = "LEADER PRICE"
+                st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        with col3:
+            st.markdown("<div class='scan-option-card'>", unsafe_allow_html=True)
+            st.markdown("<h4 style='text-align:center'>🛒 ULYS</h4>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align:center;font-size:0.9em'>Format avec GTIN et catégories</p>", unsafe_allow_html=True)
+            if st.button("Sélectionner ULYS", key="select_ulys", use_container_width=True):
+                st.session_state.bdc_client_type = "ULYS"
+                st.rerun()
+            st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Option détection automatique
+        st.markdown("<div class='card' style='margin-top:20px'>", unsafe_allow_html=True)
+        st.markdown("<h4 style='text-align:center'>🔍 Détection Automatique</h4>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center'>Laissez l'application détecter automatiquement le type de BDC</p>", unsafe_allow_html=True)
+        if st.button("🎯 Détection Automatique", key="select_auto", use_container_width=True):
+            st.session_state.bdc_client_type = "auto"
+            st.rerun()
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Bouton retour
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col1:
+            if st.button("⬅️ Retour"):
+                st.session_state.mode = None
+                st.rerun()
+        
+        st.stop()
     
-    uploaded = st.file_uploader("Téléchargez l'image du BDC", type=["jpg", "jpeg", "png"], 
+    # Section de scan du BDC avec le type sélectionné
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    
+    # Afficher le badge du client sélectionné
+    client_badge_class = ""
+    if st.session_state.bdc_client_type == "SUPERMAKI":
+        client_badge_class = "badge-supermaki"
+        client_name = "SUPERMAKI"
+    elif st.session_state.bdc_client_type == "LEADER PRICE":
+        client_badge_class = "badge-leader"
+        client_name = "LEADER PRICE"
+    elif st.session_state.bdc_client_type == "ULYS":
+        client_badge_class = "badge-ulys"
+        client_name = "ULYS"
+    else:
+        client_badge_class = "badge-supermaki"
+        client_name = "Détection Automatique"
+    
+    st.markdown(f"""
+        <div style='display: flex; justify-content: center; align-items: center; gap: 10px; margin-bottom: 20px;'>
+            <h3 style='text-align:center; margin:0'>📝 Scanner un Bon de Commande</h3>
+            <span class='client-badge {client_badge_class}'>{client_name}</span>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Bouton pour changer de type de client
+    if st.button("🔄 Changer de type de BDC"):
+        st.session_state.bdc_client_type = None
+        st.session_state.uploaded_file = None
+        st.session_state.show_ocr_results = False
+        st.session_state.ocr_result = None
+        st.rerun()
+    
+    uploaded = st.file_uploader(f"Téléchargez l'image du BDC {client_name}", type=["jpg", "jpeg", "png"], 
                                 key="bdc_uploader")
     
     if uploaded and uploaded != st.session_state.uploaded_file:
@@ -885,17 +1125,17 @@ elif st.session_state.mode == "bdc":
     if st.session_state.uploaded_file and not st.session_state.show_ocr_results:
         try:
             img = Image.open(st.session_state.uploaded_file)
-            st.image(img, caption="Aperçu du BDC", use_column_width=True)
+            st.image(img, caption=f"Aperçu du BDC {client_name}", use_column_width=True)
             
             # Convertir en bytes
             buf = BytesIO()
             img.save(buf, format="JPEG")
             img_bytes = buf.getvalue()
             
-            # Traitement OCR
-            with st.spinner("Traitement OCR en cours..."):
+            # Traitement OCR avec le type de client sélectionné
+            with st.spinner(f"Traitement OCR pour {client_name} en cours..."):
                 try:
-                    result = bdc_pipeline(img_bytes)
+                    result = bdc_pipeline(img_bytes, st.session_state.bdc_client_type)
                     st.session_state.ocr_result = result
                     st.session_state.show_ocr_results = True
                     st.rerun()
@@ -916,14 +1156,52 @@ elif st.session_state.mode == "bdc":
         st.markdown("<div class='card'>", unsafe_allow_html=True)
         st.markdown("<h4>📋 Informations détectées</h4>", unsafe_allow_html=True)
         
-        col1, col2 = st.columns(2)
-        with col1:
-            date = st.text_input("Date émission", value=result.get("date", "04/11/2025"), key="bdc_date")
-            client = st.text_input("Client/Facturation", value=result.get("client", "S2M"), key="bdc_client")
+        # Afficher les informations selon le type de client
+        if result.get("client_type") == "SUPERMAKI":
+            col1, col2 = st.columns(2)
+            with col1:
+                date = st.text_input("Date diffusion", value=result.get("date", ""), key="bdc_date")
+                numero = st.text_input("Numéro BDC", value=result.get("numero", ""), key="bdc_numero")
+            
+            with col2:
+                adresse = st.text_input("Adresse livraison", value=result.get("adresse_livraison", ""), key="bdc_adresse")
+                adresse_fournisseur = st.text_input("Adresse fournisseur", value=result.get("adresse_fournisseur", ""), key="bdc_adresse_four")
+            
+            client = "SUPERMAKI"
         
-        with col2:
-            numero = st.text_input("Numéro BDC", value=result.get("numero", "25011956"), key="bdc_numero")
-            adresse = st.text_input("Adresse livraison", value=result.get("adresse_livraison", "SCORE TALATAMATY"), key="bdc_adresse")
+        elif result.get("client_type") == "LEADER PRICE":
+            col1, col2 = st.columns(2)
+            with col1:
+                date = st.text_input("Date", value=result.get("date", ""), key="bdc_date")
+                numero = st.text_input("Numéro Commande", value=result.get("numero", ""), key="bdc_numero")
+            
+            with col2:
+                adresse = st.text_input("Adresse livraison", value=result.get("adresse_livraison", ""), key="bdc_adresse")
+            
+            client = "LEADER PRICE"
+        
+        elif result.get("client_type") == "ULYS":
+            col1, col2 = st.columns(2)
+            with col1:
+                date = st.text_input("Date de la Commande", value=result.get("date", ""), key="bdc_date")
+                numero = st.text_input("N°", value=result.get("numero", ""), key="bdc_numero")
+            
+            with col2:
+                adresse = st.text_input("Nom du Magasin", value=result.get("nom_magasin", ""), key="bdc_adresse")
+                nom_fournisseur = st.text_input("Nom Fournisseur", value=result.get("nom_fournisseur", ""), key="bdc_fournisseur")
+            
+            client = "ULYS"
+        
+        else:
+            # Fallback générique
+            col1, col2 = st.columns(2)
+            with col1:
+                date = st.text_input("Date émission", value=result.get("date", ""), key="bdc_date")
+                client = st.text_input("Client/Facturation", value=result.get("client", ""), key="bdc_client")
+            
+            with col2:
+                numero = st.text_input("Numéro BDC", value=result.get("numero", ""), key="bdc_numero")
+                adresse = st.text_input("Adresse livraison", value=result.get("adresse_livraison", ""), key="bdc_adresse")
         
         st.markdown("</div>", unsafe_allow_html=True)
         
@@ -933,26 +1211,33 @@ elif st.session_state.mode == "bdc":
         
         articles = result.get("articles", [])
         if articles:
-            df = pd.DataFrame(articles)
+            # Convertir en DataFrame pour l'affichage
+            df_data = []
+            for item in articles:
+                row = {}
+                for key, value in item.items():
+                    row[key] = value
+                df_data.append(row)
+            
+            df = pd.DataFrame(df_data)
+            
+            # Afficher l'éditeur de données
             edited_df = st.data_editor(
                 df,
                 num_rows="dynamic",
-                column_config={
-                    "Désignation": st.column_config.TextColumn("Article (Désignation)", width="large"),
-                    "Qté": st.column_config.NumberColumn("Qté", format="%.3f", width="small")
-                },
                 use_container_width=True,
                 key="bdc_articles"
             )
         else:
             st.warning("Aucun article détecté. Ajoutez-les manuellement.")
-            df = pd.DataFrame(columns=["Désignation", "Qté"])
+            df = pd.DataFrame(columns=["Désignation", "Qté", "Type"])
             edited_df = st.data_editor(
                 df,
                 num_rows="dynamic",
                 column_config={
                     "Désignation": st.column_config.TextColumn("Article (Désignation)"),
-                    "Qté": st.column_config.NumberColumn("Qté", format="%.3f")
+                    "Qté": st.column_config.NumberColumn("Qté", format="%.3f"),
+                    "Type": st.column_config.SelectboxColumn("Type", options=["article", "consigne"])
                 },
                 use_container_width=True,
                 key="bdc_articles_empty"
@@ -960,7 +1245,7 @@ elif st.session_state.mode == "bdc":
         
         # Bouton ajouter ligne
         if st.button("➕ Ajouter une ligne", key="bdc_add_line"):
-            new_row = {"Désignation": "", "Qté": ""}
+            new_row = {"Désignation": "", "Qté": "", "Type": "article"}
             if 'edited_df' in locals():
                 edited_df = pd.concat([edited_df, pd.DataFrame([new_row])], ignore_index=True)
             else:
@@ -985,67 +1270,65 @@ elif st.session_state.mode == "bdc":
         else:
             if st.button("💾 Enregistrer dans Google Sheets", use_container_width=True, key="bdc_save"):
                 try:
-                    # Vérifier que user_nom existe
                     if not hasattr(st.session_state, 'user_nom') or not st.session_state.user_nom:
                         st.error("❌ Erreur de session. Veuillez vous reconnecter.")
                     else:
-                        # Préparer les données avec le nouvel ordre
-                        data_to_save = []
-                        for _, row in edited_df.iterrows():
-                            if str(row["Désignation"]).strip() and str(row["Qté"]).strip():
-                                data_to_save.append([
-                                    date,
-                                    client,
-                                    numero,
-                                    adresse,
-                                    str(row["Désignation"]).strip(),
-                                    str(row["Qté"]).strip(),
-                                    st.session_state.user_nom
-                                ])
+                        # Préparer les données pour l'enregistrement
+                        bdc_data = {
+                            "date": date,
+                            "client": client,
+                            "numero": numero,
+                            "adresse_livraison": adresse,
+                            "articles": edited_df.to_dict('records') if 'edited_df' in locals() else []
+                        }
                         
-                        if data_to_save:
-                            # Enregistrer sans doublons
-                            saved_count, duplicate_count = save_bdc_without_duplicates(ws, {
-                                "date": date,
-                                "client": client,
-                                "numero": numero,
-                                "adresse_livraison": adresse,
-                                "articles": edited_df.to_dict('records')
-                            }, st.session_state.user_nom)
+                        # Enregistrer sans doublons
+                        saved_count, duplicate_count = save_bdc_without_duplicates(ws, bdc_data, st.session_state.user_nom)
+                        
+                        if saved_count > 0:
+                            st.session_state.bdc_scans += 1
+                            st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succès!")
+                            st.info(f"📝 Format enregistré: Date émission | Client/Facturation | Numéro BDC | Adresse livraison | Article | Qte | Editeur")
+                            st.info(f"👤 Enregistré par: {st.session_state.user_nom}")
+                            st.info(f"🏷️ Type de BDC: {result.get('client_type', 'Inconnu')}")
                             
-                            if saved_count > 0:
-                                st.session_state.bdc_scans += 1
-                                st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succès!")
-                                st.info(f"📝 Format enregistré: Date émission | Client/Facturation | Numéro BDC | Adresse livraison | Article | Qte | Editeur")
-                                st.info(f"👤 Enregistré par: {st.session_state.user_nom}")
+                            # Bouton pour effacer et recommencer
+                            if st.button("🗑️ Effacer et recommencer", use_container_width=True, type="secondary"):
+                                st.session_state.uploaded_file = None
+                                st.session_state.show_ocr_results = False
+                                st.session_state.ocr_result = None
+                                st.rerun()
                                 
-                                # Bouton pour effacer et recommencer
-                                if st.button("🗑️ Effacer et recommencer", use_container_width=True, type="secondary"):
-                                    st.session_state.uploaded_file = None
-                                    st.session_state.show_ocr_results = False
-                                    st.session_state.ocr_result = None
-                                    st.rerun()
-                                    
-                            elif duplicate_count > 0:
-                                st.warning("⚠️ Ce BDC existe déjà dans la base de données.")
-                            else:
-                                st.warning("⚠️ Aucune donnée valide à enregistrer")
-                                
+                        elif duplicate_count > 0:
+                            st.warning("⚠️ Ce BDC existe déjà dans la base de données.")
+                        else:
+                            st.warning("⚠️ Aucune donnée valide à enregistrer")
+                            
                 except Exception as e:
                     st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
             
-            # Bouton Effacer et recommencer (en dessous)
+            # Bouton Effacer et recommencer
             st.markdown("<br>", unsafe_allow_html=True)
-            if st.button("🗑️ Effacer et recommencer", use_container_width=True, type="secondary", key="bdc_clear_bottom"):
-                st.session_state.uploaded_file = None
-                st.session_state.show_ocr_results = False
-                st.session_state.ocr_result = None
-                st.rerun()
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("🗑️ Effacer et recommencer", use_container_width=True, type="secondary", key="bdc_clear_bottom"):
+                    st.session_state.uploaded_file = None
+                    st.session_state.show_ocr_results = False
+                    st.session_state.ocr_result = None
+                    st.rerun()
+            
+            with col2:
+                if st.button("🔄 Nouveau type de BDC", use_container_width=True, type="secondary", key="bdc_new_type"):
+                    st.session_state.bdc_client_type = None
+                    st.session_state.uploaded_file = None
+                    st.session_state.show_ocr_results = False
+                    st.session_state.ocr_result = None
+                    st.rerun()
         
         st.markdown("</div>", unsafe_allow_html=True)
     
     else:
-        st.info("📤 Veuillez télécharger une image de bon de commande")
+        st.info(f"📤 Veuillez télécharger une image de bon de commande {client_name}")
         st.markdown("</div>", unsafe_allow_html=True)
     
     # Boutons de navigation
@@ -1053,6 +1336,7 @@ elif st.session_state.mode == "bdc":
     with col1:
         if st.button("⬅️ Retour"):
             st.session_state.mode = None
+            st.session_state.bdc_client_type = None
             st.session_state.uploaded_file = None
             st.session_state.show_ocr_results = False
             st.session_state.ocr_result = None
@@ -1061,6 +1345,7 @@ elif st.session_state.mode == "bdc":
     with col2:
         if st.button("📄 Passer aux factures"):
             st.session_state.mode = "facture"
+            st.session_state.bdc_client_type = None
             st.session_state.uploaded_file = None
             st.session_state.show_ocr_results = False
             st.session_state.ocr_result = None
@@ -1071,6 +1356,7 @@ elif st.session_state.mode == "bdc":
             st.session_state.auth = False
             st.session_state.user_nom = ""
             st.session_state.mode = None
+            st.session_state.bdc_client_type = None
             st.session_state.uploaded_file = None
             st.session_state.show_ocr_results = False
             st.session_state.ocr_result = None
