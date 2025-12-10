@@ -10,7 +10,7 @@ import os
 import base64
 from datetime import datetime
 from io import BytesIO
-from PIL import Image, ImageFilter, ImageOps
+from PIL import Image, ImageFilter, ImageOps, ImageEnhance
 from google.cloud import vision
 from google.oauth2.service_account import Credentials as SA_Credentials
 import gspread
@@ -160,25 +160,68 @@ st.markdown(
         border-color: var(--gold);
         background-color: rgba(212, 175, 55, 0.05);
     }}
+    .confidence-high {{
+        background-color: rgba(76, 175, 80, 0.1);
+        border-left: 4px solid #4CAF50;
+        padding: 10px;
+        border-radius: 4px;
+        margin: 5px 0;
+    }}
+    .confidence-medium {{
+        background-color: rgba(255, 193, 7, 0.1);
+        border-left: 4px solid #FFC107;
+        padding: 10px;
+        border-radius: 4px;
+        margin: 5px 0;
+    }}
+    .confidence-low {{
+        background-color: rgba(244, 67, 54, 0.1);
+        border-left: 4px solid #F44336;
+        padding: 10px;
+        border-radius: 4px;
+        margin: 5px 0;
+    }}
     </style>
     """,
     unsafe_allow_html=True
 )
 
 # ---------------------------
-# OCR Functions
+# OCR Functions AMÉLIORÉES
 # ---------------------------
-def preprocess_image(image_bytes: bytes) -> bytes:
+def advanced_preprocess_image(image_bytes: bytes) -> bytes:
+    """Prétraitement avancé pour optimiser l'OCR des tableaux"""
     img = Image.open(BytesIO(image_bytes)).convert("RGB")
-    max_w = 2600
+    
+    # Redimensionnement intelligent
+    max_w = 2800  # Légèrement augmenté pour les tableaux larges
     if img.width > max_w:
         ratio = max_w / img.width
-        img = img.resize((max_w, int(img.height * ratio)), Image.LANCZOS)
-    img = ImageOps.autocontrast(img)
-    img = img.filter(ImageFilter.MedianFilter(size=3))
-    img = img.filter(ImageFilter.UnsharpMask(radius=1, percent=120, threshold=3))
+        new_height = int(img.height * ratio)
+        img = img.resize((max_w, new_height), Image.LANCZOS)
+    
+    # Amélioration du contraste spécifique pour les tableaux
+    img = ImageOps.autocontrast(img, cutoff=2)
+    
+    # Détection et renforcement des lignes de tableau
+    # Filtre pour accentuer les contours (utile pour les lignes de tableau)
+    img = img.filter(ImageFilter.UnsharpMask(radius=1.5, percent=180, threshold=2))
+    
+    # Amélioration de la netteté
+    enhancer = ImageEnhance.Sharpness(img)
+    img = enhancer.enhance(1.8)
+    
+    # Amélioration de la luminosité
+    enhancer = ImageEnhance.Brightness(img)
+    img = enhancer.enhance(1.1)
+    
+    # Conversion en niveaux de gris avec meilleur contrôle
+    img_gray = img.convert('L')
+    
+    # Sauvegarde en haute qualité
     out = BytesIO()
-    img.save(out, format="JPEG", quality=90)
+    img_gray.save(out, format="PNG", optimize=True)
+    
     return out.getvalue()
 
 def get_vision_client():
@@ -192,22 +235,262 @@ def get_vision_client():
     client = vision.ImageAnnotatorClient(credentials=creds)
     return client
 
-def google_vision_ocr(img_bytes: bytes) -> str:
+def google_vision_ocr_with_hints(img_bytes: bytes, client_type: str = "auto"):
+    """OCR avec des hints pour améliorer la reconnaissance des tableaux"""
+    
     client = get_vision_client()
     image = vision.Image(content=img_bytes)
-    response = client.text_detection(image=image)
+    
+    # Configuration spécifique pour les tableaux
+    context = vision.ImageContext(
+        language_hints=["fr", "en"],  # Français et anglais
+    )
+    
+    # Feature spécifique pour les documents
+    feature = vision.Feature(
+        type_=vision.Feature.Type.DOCUMENT_TEXT_DETECTION
+    )
+    
+    request = vision.AnnotateImageRequest(
+        image=image,
+        features=[feature],
+        image_context=context
+    )
+    
+    response = client.annotate_image(request=request)
+    
     if response.error and response.error.message:
         raise Exception(f"Google Vision Error: {response.error.message}")
+    
     raw = ""
-    if response.text_annotations:
-        raw = response.text_annotations[0].description
-    return raw or ""
+    if response.full_text_annotation:
+        raw = response.full_text_annotation.text
+    
+    # Extraire également les informations de mise en page
+    blocks_info = []
+    if response.full_text_annotation:
+        for page in response.full_text_annotation.pages:
+            for block in page.blocks:
+                block_text = ""
+                for paragraph in block.paragraphs:
+                    for word in paragraph.words:
+                        word_text = ''.join([symbol.text for symbol in word.symbols])
+                        block_text += word_text + " "
+                
+                blocks_info.append({
+                    "text": block_text.strip(),
+                    "bounding_box": block.bounding_box,
+                    "confidence": block.confidence
+                })
+    
+    return {
+        "raw_text": raw,
+        "blocks": blocks_info,
+        "full_response": response
+    }
+
+def detect_specific_features(img_bytes: bytes):
+    """Utilise les features spécifiques de Vision API"""
+    client = get_vision_client()
+    image = vision.Image(content=img_bytes)
+    
+    try:
+        # Détection d'objets pour trouver les tableaux
+        objects_response = client.object_localization(image=image)
+        
+        # Recherche de produits/logos (pour identifier les clients)
+        features = [
+            vision.Feature(type_=vision.Feature.Type.LOGO_DETECTION),
+            vision.Feature(type_=vision.Feature.Type.LABEL_DETECTION),
+        ]
+        
+        properties_response = client.annotate_image(
+            request=vision.AnnotateImageRequest(image=image, features=features)
+        )
+        
+        # Analyser les objets détectés
+        detected_objects = []
+        for obj in objects_response.localized_object_annotations:
+            if obj.score > 0.5:  # Seuil de confiance
+                detected_objects.append({
+                    "name": obj.name,
+                    "score": obj.score,
+                    "bounding_box": [(v.x, v.y) for v in obj.bounding_poly.normalized_vertices]
+                })
+        
+        # Analyser les logos
+        detected_logos = []
+        if properties_response.logo_annotations:
+            for logo in properties_response.logo_annotations:
+                if logo.score > 0.7:
+                    detected_logos.append({
+                        "description": logo.description,
+                        "score": logo.score
+                    })
+        
+        # Analyser les labels
+        detected_labels = []
+        if properties_response.label_annotations:
+            for label in properties_response.label_annotations:
+                if label.score > 0.8:
+                    detected_labels.append({
+                        "description": label.description,
+                        "score": label.score
+                    })
+        
+        return {
+            "objects": detected_objects,
+            "logos": detected_logos,
+            "labels": detected_labels
+        }
+        
+    except Exception as e:
+        st.warning(f"Fonctionnalités avancées non disponibles: {str(e)}")
+        return {"objects": [], "logos": [], "labels": []}
+
+def get_optimal_crop_for_table(img_bytes: bytes):
+    """Trouve le meilleur recadrage pour les tableaux"""
+    client = get_vision_client()
+    image = vision.Image(content=img_bytes)
+    
+    try:
+        response = client.crop_hints(image=image)
+        
+        if response.crop_hints_annotation:
+            # Prendre le hint avec le plus haut score
+            best_hint = max(
+                response.crop_hints_annotation.crop_hints,
+                key=lambda h: h.confidence
+            )
+            
+            # Appliquer le recadrage
+            img = Image.open(BytesIO(img_bytes))
+            width, height = img.size
+            
+            # Convertir les coordonnées normalisées en pixels
+            vertices = best_hint.bounding_poly.vertices
+            left = vertices[0].x * width
+            top = vertices[0].y * height
+            right = vertices[2].x * width
+            bottom = vertices[2].y * height
+            
+            # Recadrer l'image
+            cropped_img = img.crop((left, top, right, bottom))
+            
+            # Sauvegarder
+            out = BytesIO()
+            cropped_img.save(out, format="JPEG", quality=95)
+            
+            return out.getvalue(), best_hint.confidence
+        
+    except Exception as e:
+        st.warning(f"Recadrage intelligent non disponible: {str(e)}")
+    
+    return img_bytes, 0.0
 
 def clean_text(text: str) -> str:
     text = text.replace("\r", "\n")
     text = re.sub(r"[^\S\r\n]+", " ", text)
     text = re.sub(r"\s+\n", "\n", text)
     return text.strip()
+
+def validate_and_correct_table_data(table_data, client_type):
+    """Valide et corrige les données de tableau extraites"""
+    
+    validated_data = []
+    
+    for row in table_data:
+        corrected_row = {}
+        
+        for key, value in row.items():
+            if key in ["Qté", "Quantité", "bouteilles", "Qte"]:
+                # Nettoyer et valider les quantités
+                clean_value = str(value).replace(',', '.').replace(' ', '')
+                # Supprimer les caractères non numériques sauf point décimal
+                clean_value = re.sub(r'[^\d.]', '', clean_value)
+                if clean_value and re.match(r'^\d+(\.\d+)?$', clean_value):
+                    corrected_row[key] = clean_value
+                else:
+                    # Essayer d'extraire les nombres de la chaîne
+                    numbers = re.findall(r'\d+', str(value))
+                    if numbers:
+                        corrected_row[key] = numbers[0]
+            
+            elif key == "EAN":
+                # Valider EAN (13 chiffres)
+                clean_ean = re.sub(r'\D', '', str(value))
+                if len(clean_ean) == 13:
+                    corrected_row[key] = clean_ean
+                elif len(clean_ean) > 13:
+                    corrected_row[key] = clean_ean[:13]
+                elif len(clean_ean) > 0:
+                    corrected_row[key] = clean_ean
+            
+            elif key == "GTIN":
+                # Valider GTIN (13 ou 14 chiffres)
+                clean_gtin = re.sub(r'\D', '', str(value))
+                if len(clean_gtin) in [13, 14]:
+                    corrected_row[key] = clean_gtin
+                elif len(clean_gtin) > 0:
+                    corrected_row[key] = clean_gtin
+            
+            elif key == "Désignation":
+                # Nettoyer la désignation
+                clean_desc = re.sub(r'\s{2,}', ' ', str(value)).strip()
+                # Supprimer les numéros isolés en début de ligne
+                clean_desc = re.sub(r'^\d+\s+', '', clean_desc)
+                # Supprimer les caractères spéciaux indésirables
+                clean_desc = re.sub(r'[^\w\s\-\.]', '', clean_desc)
+                corrected_row[key] = clean_desc
+            
+            elif key == "Réf":
+                # Nettoyer la référence
+                clean_ref = re.sub(r'[^\w\d\-]', '', str(value))
+                corrected_row[key] = clean_ref
+            
+            else:
+                # Pour les autres champs, nettoyer simplement
+                corrected_row[key] = str(value).strip()
+        
+        # Vérifier que la ligne contient des données valides
+        if any(corrected_row.values()):
+            # Calculer un score de confiance pour cette ligne
+            confidence = calculate_row_confidence(corrected_row, client_type)
+            corrected_row["_confidence"] = confidence
+            validated_data.append(corrected_row)
+    
+    return validated_data
+
+def calculate_row_confidence(row, client_type):
+    """Calcule un score de confiance pour une ligne"""
+    confidence = 0.0
+    
+    # Points pour la présence de champs clés selon le client
+    if client_type == "SUPERMAKI":
+        if "EAN" in row and len(str(row["EAN"])) >= 8:
+            confidence += 0.3
+        if "Désignation" in row and len(str(row["Désignation"])) > 10:
+            confidence += 0.3
+        if "Qté" in row and re.match(r'^\d+(\.\d+)?$', str(row["Qté"])):
+            confidence += 0.4
+    
+    elif client_type == "LEADER PRICE":
+        if "Réf" in row and len(str(row["Réf"])) > 0:
+            confidence += 0.3
+        if "Désignation" in row and len(str(row["Désignation"])) > 10:
+            confidence += 0.3
+        if "Qté" in row and re.match(r'^\d+(\.\d+)?$', str(row["Qté"])):
+            confidence += 0.4
+    
+    elif client_type == "ULYS":
+        if "GTIN" in row and len(str(row["GTIN"])) >= 8:
+            confidence += 0.3
+        if "Désignation" in row and len(str(row["Désignation"])) > 10:
+            confidence += 0.3
+        if "Qté" in row and re.match(r'^\d+(\.\d+)?$', str(row["Qté"])):
+            confidence += 0.4
+    
+    return min(confidence, 1.0)
 
 # ---------------------------
 # Facture Extraction Functions
@@ -300,7 +583,8 @@ def extract_invoice_items(text: str):
 
 def invoice_pipeline(image_bytes: bytes):
     cleaned = preprocess_image(image_bytes)
-    raw = google_vision_ocr(cleaned)
+    ocr_result = google_vision_ocr_with_hints(cleaned, "invoice")
+    raw = ocr_result["raw_text"]
     raw = clean_text(raw)
     
     return {
@@ -310,11 +594,12 @@ def invoice_pipeline(image_bytes: bytes):
         "doit": extract_doit(raw),
         "mois": extract_month(raw),
         "bon_commande": extract_bon_commande(raw),
-        "articles": extract_invoice_items(raw)
+        "articles": extract_invoice_items(raw),
+        "blocks": ocr_result.get("blocks", [])
     }
 
 # ---------------------------
-# NOUVELLES FONCTIONS BDC SPÉCIFIQUES PAR CLIENT
+# NOUVELLES FONCTIONS BDC SPÉCIFIQUES PAR CLIENT AMÉLIORÉES
 # ---------------------------
 
 def extract_bdc_supermaki(text: str):
@@ -332,11 +617,20 @@ def extract_bdc_supermaki(text: str):
     bdc_match = re.search(r"Bon de commande n[°o]\s*(\d+)", text, re.I)
     if bdc_match:
         result["numero"] = bdc_match.group(1)
+    else:
+        # Essayer d'autres patterns
+        bdc_match = re.search(r"n[°o]\s*(\d{8})", text, re.I)
+        if bdc_match:
+            result["numero"] = bdc_match.group(1)
     
     # Extraire date
     date_match = re.search(r"Date diffusion\s*(\d{2}/\d{2}/\d{4})", text, re.I)
     if date_match:
         result["date"] = date_match.group(1)
+    else:
+        date_match = re.search(r"(\d{2}/\d{2}/\d{4})", text)
+        if date_match:
+            result["date"] = date_match.group(1)
     
     # Extraire adresse livraison
     lines = text.split('\n')
@@ -353,51 +647,59 @@ def extract_bdc_supermaki(text: str):
                 result["adresse_fournisseur"] = lines[i + 1].strip()
                 break
     
-    # Extraire les articles (format spécifique SUPERMAKI)
+    # Extraire les articles (format spécifique SUPERMAKI) - AMÉLIORÉ
     table_pattern = r"REF\s+EAN\s+Désignation\s+PGB\s+Nb Colis\s+Quantité\s+PA Unitaire\s+PA Fact\s+TVA"
     lines = text.split('\n')
     in_table = False
-    current_article = {}
     
-    for line in lines:
-        if re.search(table_pattern, line, re.I):
+    for i, line in enumerate(lines):
+        if re.search(table_pattern, line, re.I) or "REF" in line and "EAN" in line and "Désignation" in line:
             in_table = True
             continue
         
-        if in_table and line.strip() and not line.startswith("---"):
-            # Chercher EAN
-            ean_match = re.search(r"(\d{13})", line)
+        if in_table and line.strip() and not line.startswith("---") and not "Montant TOTAL" in line:
+            # Chercher EAN (13 chiffres)
+            ean_match = re.search(r'(\d{13})', line)
             if ean_match:
                 ean = ean_match.group(1)
-                # Chercher désignation après EAN
-                parts = line.split(ean)
-                if len(parts) > 1:
-                    designation = parts[1].strip()
-                    # Chercher quantité
-                    qty_match = re.search(r"(\d+)\s+\d+$", line)
-                    if qty_match:
-                        qte = qty_match.group(1)
+                # Chercher quantité - pattern amélioré
+                qty_match = re.search(r'(\d+)\s+\d+\s+\d+\s+\d+', line)
+                if not qty_match:
+                    qty_match = re.search(r'(\d+)\s+\d+', line)
+                
+                if qty_match:
+                    qte = qty_match.group(1)
+                    # Extraire la désignation
+                    # Enlever l'EAN et les nombres pour obtenir la désignation
+                    temp_line = re.sub(r'\d{13}', '', line)
+                    temp_line = re.sub(r'\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+\s+\d+', '', temp_line)
+                    designation = temp_line.strip()
+                    
+                    if designation:
                         result["articles"].append({
                             "EAN": ean,
                             "Désignation": designation,
                             "Qté": qte,
                             "Type": "article"
                         })
+            
             # Chercher consigne
-            elif "CONS" in line and "CHANFOUI" in line.upper():
-                cons_match = re.search(r"(\d+)\s+(\d{3,})", line)
-                if cons_match:
+            elif "CONS" in line.upper() and "CHAN" in line.upper():
+                # Chercher le pattern de quantité pour consigne
+                cons_qty_match = re.search(r'(\d+)\s+\d+', line)
+                if cons_qty_match:
+                    qte = cons_qty_match.group(1)
                     result["articles"].append({
                         "EAN": "0000010000373",
-                        "Désignation": "CONS 2000 CHANFOUI",
-                        "Qté": cons_match.group(1),
+                        "Désignation": "CONSIGNE CHANFOUI 75CL",
+                        "Qté": qte,
                         "Type": "consigne"
                     })
     
     return result
 
 def extract_bdc_leader_price(text: str):
-    """Extraction pour LEADER PRICE"""
+    """Extraction pour LEADER PRICE - AMÉLIORÉE"""
     result = {
         "client": "LEADER PRICE",
         "numero": "",
@@ -406,52 +708,95 @@ def extract_bdc_leader_price(text: str):
         "articles": []
     }
     
-    # Extraire numéro BDC
-    bdc_match = re.search(r"N[°o]\s+de\s+Commande\s+(\S+)", text, re.I)
-    if bdc_match:
-        result["numero"] = bdc_match.group(1)
+    # Extraire numéro BDC - patterns améliorés
+    bdc_patterns = [
+        r"N[°o]\s+de\s+Commande\s+(\S+)",
+        r"BCD(\d+)",
+        r"Commande\s+(\S+)",
+        r"N[°o]\s+(\d+)"
+    ]
     
-    # Extraire date
-    date_match = re.search(r"Date\s+(\d{2}/\d{2}/\d{2})", text, re.I)
-    if date_match:
-        date_str = date_match.group(1)
-        # Convertir format JJ/MM/AA en JJ/MM/AAAA
-        day, month, year = date_str.split('/')
-        year = "20" + year if len(year) == 2 else year
-        result["date"] = f"{day}/{month}/{year}"
+    for pattern in bdc_patterns:
+        bdc_match = re.search(pattern, text, re.I)
+        if bdc_match:
+            result["numero"] = bdc_match.group(1)
+            break
+    
+    # Extraire date - patterns améliorés
+    date_patterns = [
+        r"Date\s+(\d{1,2}\s*[/\-]\s*\d{1,2}\s*[/\-]\s*\d{2,4})",
+        r"(\d{1,2}\s*[/\-]\s*\d{1,2}\s*[/\-]\s*25)",  # Pour 2025
+        r"(\d{1,2}/\d{1,2}/\d{2,4})"
+    ]
+    
+    for pattern in date_patterns:
+        date_match = re.search(pattern, text, re.I)
+        if date_match:
+            date_str = re.sub(r'\s+', '', date_match.group(1))
+            parts = re.split(r'[/\-]', date_str)
+            if len(parts) == 3:
+                day = parts[0].zfill(2)
+                mon = parts[1].zfill(2)
+                year = parts[2] if len(parts[2]) == 4 else "20" + parts[2]
+                result["date"] = f"{day}/{mon}/{year}"
+                break
     
     # Extraire adresse livraison
     lines = text.split('\n')
     for i, line in enumerate(lines):
-        if "a livrer a" in line.lower() or "à livrer à" in line.lower():
+        if "a livrer a" in line.lower() or "à livrer à" in line.lower() or "livrer à" in line.lower():
             address_lines = []
             for j in range(1, 4):
                 if i + j < len(lines) and lines[i + j].strip():
                     address_lines.append(lines[i + j].strip())
             if address_lines:
-                result["adresse_livraison"] = " ".join(address_lines)
+                result["adresse_livraison"] = " ".join(address_lines[:2])
                 break
     
-    # Extraire les articles (format spécifique LEADER PRICE)
+    # Extraire les articles (format spécifique LEADER PRICE) - AMÉLIORÉ
     lines = text.split('\n')
     in_table = False
+    header_found = False
     
-    for line in lines:
+    for i, line in enumerate(lines):
         # Chercher le début du tableau
-        if any(x in line.lower() for x in ["réf", "désignation", "qté cdée"]):
+        if any(x in line.lower() for x in ["réf", "désignation", "qté cdée", "qté"]) and not header_found:
             in_table = True
+            header_found = True
             continue
         
-        if in_table and line.strip() and not any(x in line.lower() for x in ["total", "signature", "cachet"]):
-            # Format: Réf | Désignation | Qté Cdée | Qté livrée | Condiment | Px unitaire | Rem | Montant HT
-            parts = re.split(r'\s{2,}', line.strip())
+        if in_table and line.strip() and not any(x in line.lower() for x in ["total", "signature", "cachet", "montant", "heures"]):
+            # Nettoyer la ligne
+            clean_line = re.sub(r'\s{2,}', '|', line.strip())
+            parts = clean_line.split('|')
+            
             if len(parts) >= 3:
                 ref = parts[0].strip()
-                designation = parts[1].strip()
-                qte = parts[2].strip().replace(".000", "").replace(",", ".")
+                designation = parts[1].strip() if len(parts) > 1 else ""
                 
-                # Filtrer les lignes vides ou sans quantité
-                if qte and qte != "Plèces" and not qte.endswith(".00"):
+                # Chercher quantité dans différentes positions
+                qte = ""
+                for j in range(2, min(5, len(parts))):
+                    if re.match(r'^\d+\.?\d*$', parts[j].replace(',', '.').strip()):
+                        qte = parts[j].replace(',', '.').strip()
+                        break
+                
+                # Si pas trouvé, essayer avec regex sur la ligne entière
+                if not qte:
+                    qty_match = re.search(r'(\d+\.?\d*)\s*(?:Plèces|Pièces|Pieces)', line)
+                    if qty_match:
+                        qte = qty_match.group(1)
+                    else:
+                        qty_match = re.search(r'\b(\d{1,3}(?:\.\d{3})*)\b', line)
+                        if qty_match:
+                            qte = qty_match.group(1).replace('.', '')
+                
+                if qte and ref and designation:
+                    # Nettoyer la quantité
+                    qte = qte.replace('.000', '').replace(',', '.').replace(' ', '')
+                    if '.' in qte:
+                        qte = str(float(qte))
+                    
                     result["articles"].append({
                         "Réf": ref,
                         "Désignation": designation,
@@ -462,7 +807,7 @@ def extract_bdc_leader_price(text: str):
     return result
 
 def extract_bdc_ulys(text: str):
-    """Extraction pour ULYS"""
+    """Extraction pour ULYS - AMÉLIORÉE"""
     result = {
         "client": "ULYS",
         "numero": "",
@@ -473,106 +818,178 @@ def extract_bdc_ulys(text: str):
         "articles": []
     }
     
-    # Extraire numéro BDC
-    bdc_match = re.search(r"N[°o]\s+(\d{10})", text)
-    if bdc_match:
-        result["numero"] = bdc_match.group(1)
+    # Extraire numéro BDC - patterns améliorés
+    bdc_patterns = [
+        r"N[°o]\s+(\d{10})",
+        r"(\d{10})",
+        r"BDC\s*(\d+)",
+        r"Commande\s*N[°o]?\s*(\d+)"
+    ]
     
-    # Extraire date
-    date_match = re.search(r"Date de la Commande\s*:\s*(\d{2}\.\d{2}\.\d{4})", text)
-    if date_match:
-        date_str = date_match.group(1).replace(".", "/")
-        result["date"] = date_str
+    for pattern in bdc_patterns:
+        bdc_match = re.search(pattern, text)
+        if bdc_match:
+            result["numero"] = bdc_match.group(1)
+            break
+    
+    # Extraire date - patterns améliorés
+    date_patterns = [
+        r"Date de la Commande\s*:\s*(\d{2}\.\d{2}\.\d{4})",
+        r"Date\s*:\s*(\d{2}\.\d{2}\.\d{4})",
+        r"(\d{2}\.\d{2}\.\d{4})",
+        r"(\d{2}/\d{2}/\d{4})"
+    ]
+    
+    for pattern in date_patterns:
+        date_match = re.search(pattern, text)
+        if date_match:
+            date_str = date_match.group(1).replace('.', '/')
+            result["date"] = date_str
+            break
     
     # Extraire nom magasin
-    magasin_match = re.search(r"Nom du Magasin\s*:\s*(.+)", text, re.I)
-    if magasin_match:
-        result["nom_magasin"] = magasin_match.group(1).strip()
-        result["adresse_livraison"] = result["nom_magasin"]
+    magasin_patterns = [
+        r"Nom du Magasin\s*:\s*(.+)",
+        r"Magasin\s*:\s*(.+)",
+        r"SUPER U\s+(.+)"
+    ]
+    
+    for pattern in magasin_patterns:
+        magasin_match = re.search(pattern, text, re.I)
+        if magasin_match:
+            result["nom_magasin"] = magasin_match.group(1).strip()
+            result["adresse_livraison"] = result["nom_magasin"]
+            break
     
     # Extraire nom fournisseur
     fournisseur_match = re.search(r"Nom du Fournisseur\s*:\s*(.+)", text, re.I)
     if fournisseur_match:
         result["nom_fournisseur"] = fournisseur_match.group(1).strip()
     
-    # Extraire les articles (format spécifique ULYS)
+    # Extraire les articles (format spécifique ULYS) - AMÉLIORÉ
     lines = text.split('\n')
     in_table = False
+    current_category = ""
     
     for i, line in enumerate(lines):
-        # Chercher le début du tableau (header avec GTIN, Article No, etc.)
-        if "GTIN" in line and "Article No" in line and "Description" in line:
+        # Chercher le début du tableau (header)
+        header_keywords = ["GTIN", "Article No", "Description", "Unité", "Qté", "Conv", "Date"]
+        if sum(keyword in line for keyword in header_keywords) >= 3:
             in_table = True
             continue
         
-        if in_table and line.strip() and not any(x in line.lower() for x in ["total", "document", "page"]):
-            # Format: GTIN | Article No | Description | Unité | Qté | Conv. Factor | Date Livraison
-            # OU Catégorie (122111 - VINS ROUGES)
-            
-            # Vérifier si c'est une catégorie
-            if re.match(r'\d{6}\s*-\s*[A-Z\s]+', line):
-                current_category = line.strip()
-                continue
-            
-            # C'est une ligne d'article
-            # Chercher GTIN (13 chiffres)
-            gtin_match = re.search(r'(\d{13})', line)
+        # Chercher les catégories (ex: 122111 - VINS ROUGES)
+        category_match = re.match(r'(\d{6})\s*-\s*([A-Z\s]+)', line.strip())
+        if category_match:
+            current_category = category_match.group(2).strip()
+            continue
+        
+        if in_table and line.strip() and not any(x in line.lower() for x in ["total", "document", "page", "n° document"]):
+            # Chercher GTIN (13 ou 14 chiffres)
+            gtin_match = re.search(r'(\d{13,14})', line)
             if gtin_match:
                 gtin = gtin_match.group(1)
-                # Chercher quantité
-                qty_match = re.search(r'(\d+)\s+\d+\s*[PAQ/PC]', line)
-                if qty_match:
-                    qte = qty_match.group(1)
-                    # Chercher description
-                    # Enlever GTIN, Article No, etc. pour trouver description
-                    temp_line = line.replace(gtin, "")
-                    # Chercher le prochain nombre (Article No)
-                    temp_line = re.sub(r'\d{8}', '', temp_line, 1)
-                    # Prendre le texte jusqu'à "PAQ" ou "/PC"
-                    desc_match = re.search(r'([A-Z\s]+?)\s+(PAQ|/PC)', temp_line)
-                    if desc_match:
-                        designation = desc_match.group(1).strip()
-                        result["articles"].append({
-                            "GTIN": gtin,
-                            "Désignation": designation,
-                            "Qté": qte,
-                            "Unité": desc_match.group(2),
-                            "Type": "article"
-                        })
+                
+                # Chercher quantité - patterns améliorés
+                qty_patterns = [
+                    r'(\d+)\s+\d+\s*[PAQ/PC]',
+                    r'(\d+)\s+\d+\s+\d',
+                    r'\b(\d+)\s+(?:PAQ|/PC)',
+                    r'\b(\d+)\b.*?(?:PAQ|/PC)'
+                ]
+                
+                qte = ""
+                for pattern in qty_patterns:
+                    qty_match = re.search(pattern, line)
+                    if qty_match:
+                        qte = qty_match.group(1)
+                        break
+                
+                # Si pas trouvé, chercher un nombre isolé
+                if not qte:
+                    numbers = re.findall(r'\b(\d+)\b', line)
+                    if len(numbers) >= 2:
+                        qte = numbers[1]  # Généralement le deuxième nombre est la quantité
+                
+                # Extraire la description
+                # Enlever le GTIN
+                temp_line = re.sub(r'\d{13,14}', '', line)
+                # Enlever les nombres de référence
+                temp_line = re.sub(r'\d{8}', '', temp_line)
+                # Enlever les quantités et unités
+                temp_line = re.sub(r'\d+\s*[PAQ/PC]', '', temp_line)
+                temp_line = re.sub(r'\s+\d+\s+\d+', '', temp_line)
+                
+                designation = temp_line.strip()
+                
+                # Nettoyer la désignation
+                if designation:
+                    designation = re.sub(r'\s{2,}', ' ', designation)
+                    # Ajouter la catégorie si disponible
+                    if current_category and not current_category in designation:
+                        designation = f"{current_category} - {designation}"
+                    
+                    result["articles"].append({
+                        "GTIN": gtin,
+                        "Désignation": designation,
+                        "Qté": qte if qte else "1",
+                        "Type": "article"
+                    })
     
     return result
 
-def bdc_pipeline(image_bytes: bytes, client_type: str = "auto"):
-    """Pipeline BDC principal avec détection automatique ou choix spécifique"""
-    cleaned = preprocess_image(image_bytes)
-    raw = google_vision_ocr(cleaned)
-    raw = clean_text(raw)
+def enhanced_bdc_pipeline(image_bytes: bytes, client_type: str = "auto"):
+    """Pipeline BDC amélioré avec features avancées"""
     
-    # Détection automatique du client si non spécifié
+    # 1. Prétraitement avancé
+    processed_img = advanced_preprocess_image(image_bytes)
+    
+    # 2. Détection de features avancées
+    advanced_features = detect_specific_features(processed_img)
+    
+    # 3. Recadrage intelligent si disponible
+    cropped_img, crop_score = get_optimal_crop_for_table(processed_img)
+    
+    # 4. OCR avec hints
+    ocr_result = google_vision_ocr_with_hints(cropped_img, client_type)
+    raw_text = ocr_result["raw_text"]
+    raw_text = clean_text(raw_text)
+    
+    # 5. Détection automatique du client si non spécifié
     if client_type == "auto":
-        if "SUPERMAKI" in raw or "AMBOHIBAO" in raw:
+        if "SUPERMAKI" in raw_text or "AMBOHIBAO" in raw_text:
             client_type = "SUPERMAKI"
-        elif "LEADER PRICE" in raw or "D.L.P.M" in raw:
+        elif "LEADER PRICE" in raw_text or "D.L.P.M" in raw_text:
             client_type = "LEADER PRICE"
-        elif "ULYS" in raw or "SUPER U" in raw:
+        elif "ULYS" in raw_text or "SUPER U" in raw_text:
             client_type = "ULYS"
         else:
             client_type = "SUPERMAKI"  # Par défaut
     
-    # Appeler la fonction d'extraction appropriée
+    # 6. Appeler la fonction d'extraction appropriée
     if client_type == "SUPERMAKI":
-        result = extract_bdc_supermaki(raw)
+        result = extract_bdc_supermaki(raw_text)
     elif client_type == "LEADER PRICE":
-        result = extract_bdc_leader_price(raw)
+        result = extract_bdc_leader_price(raw_text)
     elif client_type == "ULYS":
-        result = extract_bdc_ulys(raw)
+        result = extract_bdc_ulys(raw_text)
     else:
-        # Fallback à l'ancienne méthode
-        result = extract_bdc_supermaki(raw)
+        result = extract_bdc_supermaki(raw_text)
     
-    # Ajouter le texte brut OCR
-    result["raw"] = raw
+    # 7. Valider et corriger les données
+    if result["articles"]:
+        result["articles"] = validate_and_correct_table_data(result["articles"], client_type)
+    
+    # 8. Ajouter les métadonnées
+    result["raw"] = raw_text
     result["client_type"] = client_type
+    result["advanced_features"] = advanced_features
+    result["crop_confidence"] = crop_score
+    result["ocr_blocks"] = ocr_result.get("blocks", [])
+    
+    # 9. Calculer le score de confiance global
+    confidence_scores = [item.get("_confidence", 0.5) for item in result["articles"]]
+    result["overall_confidence"] = np.mean(confidence_scores) if confidence_scores else 0.5
     
     return result
 
@@ -798,9 +1215,12 @@ if st.session_state.mode is None:
             st.rerun()
     
     with col2:
-        if st.button("📝 Scanner BDC", use_container_width=True):
+        if st.button("📝 Scanner BDC (Version Avancée)", use_container_width=True):
             st.session_state.mode = "bdc"
             st.rerun()
+    
+    st.markdown("<p style='text-align:center;font-size:0.9em;color:var(--muted)'>"
+                "Version BDC améliorée avec Google Vision API avancée</p>", unsafe_allow_html=True)
     
     st.markdown("</div>", unsafe_allow_html=True)
     
@@ -1023,7 +1443,7 @@ if st.session_state.mode == "facture":
             st.rerun()
 
 # ---------------------------
-# NOUVEAU MODE BDC AVEC CHOIX DE CLIENT
+# NOUVEAU MODE BDC AVEC CHOIX DE CLIENT AMÉLIORÉ
 # ---------------------------
 elif st.session_state.mode == "bdc":
     # Section de sélection du type de BDC
@@ -1037,7 +1457,7 @@ elif st.session_state.mode == "bdc":
         with col1:
             st.markdown("<div class='scan-option-card'>", unsafe_allow_html=True)
             st.markdown("<h4 style='text-align:center'>🍷 SUPERMAKI</h4>", unsafe_allow_html=True)
-            st.markdown("<p style='text-align:center;font-size:0.9em'>Format propre avec tableaux spécifiques</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align:center;font-size:0.9em'>Format avec REF, EAN, Désignation</p>", unsafe_allow_html=True)
             if st.button("Sélectionner SUPERMAKI", key="select_supermaki", use_container_width=True):
                 st.session_state.bdc_client_type = "SUPERMAKI"
                 st.rerun()
@@ -1046,7 +1466,7 @@ elif st.session_state.mode == "bdc":
         with col2:
             st.markdown("<div class='scan-option-card'>", unsafe_allow_html=True)
             st.markdown("<h4 style='text-align:center'>🏪 LEADER PRICE</h4>", unsafe_allow_html=True)
-            st.markdown("<p style='text-align:center;font-size:0.9em'>Format spécifique avec colonnes Réf/Désignation</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align:center;font-size:0.9em'>Format avec Réf, Désignation, Qté Cdée</p>", unsafe_allow_html=True)
             if st.button("Sélectionner LEADER PRICE", key="select_leader", use_container_width=True):
                 st.session_state.bdc_client_type = "LEADER PRICE"
                 st.rerun()
@@ -1055,7 +1475,7 @@ elif st.session_state.mode == "bdc":
         with col3:
             st.markdown("<div class='scan-option-card'>", unsafe_allow_html=True)
             st.markdown("<h4 style='text-align:center'>🛒 ULYS</h4>", unsafe_allow_html=True)
-            st.markdown("<p style='text-align:center;font-size:0.9em'>Format avec GTIN et catégories</p>", unsafe_allow_html=True)
+            st.markdown("<p style='text-align:center;font-size:0.9em'>Format avec GTIN, Article No, Description</p>", unsafe_allow_html=True)
             if st.button("Sélectionner ULYS", key="select_ulys", use_container_width=True):
                 st.session_state.bdc_client_type = "ULYS"
                 st.rerun()
@@ -1063,8 +1483,8 @@ elif st.session_state.mode == "bdc":
         
         # Option détection automatique
         st.markdown("<div class='card' style='margin-top:20px'>", unsafe_allow_html=True)
-        st.markdown("<h4 style='text-align:center'>🔍 Détection Automatique</h4>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align:center'>Laissez l'application détecter automatiquement le type de BDC</p>", unsafe_allow_html=True)
+        st.markdown("<h4 style='text-align:center'>🔍 Détection Automatique Avancée</h4>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align:center'>Utilise les fonctionnalités avancées de Google Vision</p>", unsafe_allow_html=True)
         if st.button("🎯 Détection Automatique", key="select_auto", use_container_width=True):
             st.session_state.bdc_client_type = "auto"
             st.rerun()
@@ -1106,6 +1526,9 @@ elif st.session_state.mode == "bdc":
         </div>
         """, unsafe_allow_html=True)
     
+    # Information sur les fonctionnalités avancées
+    st.info("🔍 **Fonctionnalités activées** : Prétraitement avancé | Détection de tableaux | Validation intelligente")
+    
     # Bouton pour changer de type de client
     if st.button("🔄 Changer de type de BDC"):
         st.session_state.bdc_client_type = None
@@ -1133,9 +1556,9 @@ elif st.session_state.mode == "bdc":
             img_bytes = buf.getvalue()
             
             # Traitement OCR avec le type de client sélectionné
-            with st.spinner(f"Traitement OCR pour {client_name} en cours..."):
+            with st.spinner(f"Traitement OCR avancé pour {client_name} en cours..."):
                 try:
-                    result = bdc_pipeline(img_bytes, st.session_state.bdc_client_type)
+                    result = enhanced_bdc_pipeline(img_bytes, st.session_state.bdc_client_type)
                     st.session_state.ocr_result = result
                     st.session_state.show_ocr_results = True
                     st.rerun()
@@ -1150,6 +1573,47 @@ elif st.session_state.mode == "bdc":
         result = st.session_state.ocr_result
         
         # Afficher les résultats
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Section score de confiance
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        st.markdown("<h4>📊 Score de Confiance</h4>", unsafe_allow_html=True)
+        
+        overall_confidence = result.get("overall_confidence", 0.5)
+        if overall_confidence > 0.8:
+            confidence_class = "confidence-high"
+            confidence_text = "Élevée"
+        elif overall_confidence > 0.6:
+            confidence_class = "confidence-medium"
+            confidence_text = "Moyenne"
+        else:
+            confidence_class = "confidence-low"
+            confidence_text = "Faible"
+        
+        st.markdown(f"""
+            <div class="{confidence_class}">
+                <strong>Confiance globale : {overall_confidence:.0%} ({confidence_text})</strong><br>
+                <small>Basé sur la qualité de l'extraction des données</small>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Afficher les métriques avancées
+        with st.expander("📈 Métriques avancées"):
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Articles détectés", len(result.get("articles", [])))
+            with col2:
+                crop_conf = result.get("crop_confidence", 0)
+                if crop_conf > 0:
+                    st.metric("Qualité recadrage", f"{crop_conf:.0%}")
+                else:
+                    st.metric("Qualité recadrage", "N/A")
+            with col3:
+                if result.get("advanced_features", {}).get("objects"):
+                    st.metric("Objets détectés", len(result["advanced_features"]["objects"]))
+                else:
+                    st.metric("Objets détectés", "0")
+        
         st.markdown("</div>", unsafe_allow_html=True)
         
         # Section informations détectées
@@ -1205,21 +1669,23 @@ elif st.session_state.mode == "bdc":
         
         st.markdown("</div>", unsafe_allow_html=True)
         
-        # Section articles
+        # Section articles avec indicateurs de confiance
         st.markdown("<div class='card'>", unsafe_allow_html=True)
         st.markdown("<h4>🛒 Articles détectés</h4>", unsafe_allow_html=True)
         
         articles = result.get("articles", [])
         if articles:
-            # Convertir en DataFrame pour l'affichage
-            df_data = []
-            for item in articles:
-                row = {}
-                for key, value in item.items():
-                    row[key] = value
-                df_data.append(row)
+            # Préparer les données pour l'affichage
+            display_data = []
+            for i, item in enumerate(articles):
+                display_item = item.copy()
+                # Supprimer le champ de confiance interne
+                if "_confidence" in display_item:
+                    conf = display_item.pop("_confidence")
+                    display_item["Confiance"] = f"{conf:.0%}"
+                display_data.append(display_item)
             
-            df = pd.DataFrame(df_data)
+            df = pd.DataFrame(display_data)
             
             # Afficher l'éditeur de données
             edited_df = st.data_editor(
@@ -1230,14 +1696,15 @@ elif st.session_state.mode == "bdc":
             )
         else:
             st.warning("Aucun article détecté. Ajoutez-les manuellement.")
-            df = pd.DataFrame(columns=["Désignation", "Qté", "Type"])
+            df = pd.DataFrame(columns=["Désignation", "Qté", "Type", "Confiance"])
             edited_df = st.data_editor(
                 df,
                 num_rows="dynamic",
                 column_config={
                     "Désignation": st.column_config.TextColumn("Article (Désignation)"),
                     "Qté": st.column_config.NumberColumn("Qté", format="%.3f"),
-                    "Type": st.column_config.SelectboxColumn("Type", options=["article", "consigne"])
+                    "Type": st.column_config.SelectboxColumn("Type", options=["article", "consigne"]),
+                    "Confiance": st.column_config.TextColumn("Confiance")
                 },
                 use_container_width=True,
                 key="bdc_articles_empty"
@@ -1245,7 +1712,7 @@ elif st.session_state.mode == "bdc":
         
         # Bouton ajouter ligne
         if st.button("➕ Ajouter une ligne", key="bdc_add_line"):
-            new_row = {"Désignation": "", "Qté": "", "Type": "article"}
+            new_row = {"Désignation": "", "Qté": "", "Type": "article", "Confiance": "0%"}
             if 'edited_df' in locals():
                 edited_df = pd.concat([edited_df, pd.DataFrame([new_row])], ignore_index=True)
             else:
@@ -1253,10 +1720,35 @@ elif st.session_state.mode == "bdc":
         
         st.markdown("</div>", unsafe_allow_html=True)
         
-        # Section OCR brut
+        # Section OCR brut et informations avancées
         st.markdown("<div class='card'>", unsafe_allow_html=True)
-        with st.expander("📄 Voir le texte OCR brut"):
-            st.text_area("Texte OCR", value=result.get("raw", ""), height=200, key="bdc_raw")
+        with st.expander("🔍 Informations de diagnostic avancées"):
+            tab1, tab2, tab3 = st.tabs(["Texte OCR", "Blocs détectés", "Features avancées"])
+            
+            with tab1:
+                st.text_area("Texte OCR brut", value=result.get("raw", ""), height=200, key="bdc_raw")
+            
+            with tab2:
+                if result.get("ocr_blocks"):
+                    for i, block in enumerate(result["ocr_blocks"][:10]):  # Limiter à 10 blocs
+                        st.write(f"**Bloc {i+1}** (confiance: {block.get('confidence', 0):.0%})")
+                        st.text(block.get("text", ""))
+                        st.write("---")
+                else:
+                    st.info("Aucun bloc de texte détecté")
+            
+            with tab3:
+                adv_features = result.get("advanced_features", {})
+                if adv_features.get("objects"):
+                    st.write("**Objets détectés:**")
+                    for obj in adv_features["objects"]:
+                        st.write(f"- {obj['name']} (confiance: {obj['score']:.0%})")
+                
+                if adv_features.get("logos"):
+                    st.write("**Logos détectés:**")
+                    for logo in adv_features["logos"]:
+                        st.write(f"- {logo['description']} (confiance: {logo['score']:.0%})")
+        
         st.markdown("</div>", unsafe_allow_html=True)
         
         # Section export Google Sheets
@@ -1273,13 +1765,23 @@ elif st.session_state.mode == "bdc":
                     if not hasattr(st.session_state, 'user_nom') or not st.session_state.user_nom:
                         st.error("❌ Erreur de session. Veuillez vous reconnecter.")
                     else:
+                        # Préparer les données pour l'enregistrement (enlever les champs de confiance)
+                        articles_to_save = []
+                        if 'edited_df' in locals():
+                            for _, row in edited_df.iterrows():
+                                article_data = {}
+                                for col in edited_df.columns:
+                                    if col != "Confiance":
+                                        article_data[col] = row[col]
+                                articles_to_save.append(article_data)
+                        
                         # Préparer les données pour l'enregistrement
                         bdc_data = {
                             "date": date,
                             "client": client,
                             "numero": numero,
                             "adresse_livraison": adresse,
-                            "articles": edited_df.to_dict('records') if 'edited_df' in locals() else []
+                            "articles": articles_to_save
                         }
                         
                         # Enregistrer sans doublons
@@ -1291,6 +1793,7 @@ elif st.session_state.mode == "bdc":
                             st.info(f"📝 Format enregistré: Date émission | Client/Facturation | Numéro BDC | Adresse livraison | Article | Qte | Editeur")
                             st.info(f"👤 Enregistré par: {st.session_state.user_nom}")
                             st.info(f"🏷️ Type de BDC: {result.get('client_type', 'Inconnu')}")
+                            st.info(f"🎯 Confiance moyenne: {overall_confidence:.0%}")
                             
                             # Bouton pour effacer et recommencer
                             if st.button("🗑️ Effacer et recommencer", use_container_width=True, type="secondary"):
@@ -1307,9 +1810,9 @@ elif st.session_state.mode == "bdc":
                 except Exception as e:
                     st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
             
-            # Bouton Effacer et recommencer
+            # Boutons de contrôle
             st.markdown("<br>", unsafe_allow_html=True)
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             with col1:
                 if st.button("🗑️ Effacer et recommencer", use_container_width=True, type="secondary", key="bdc_clear_bottom"):
                     st.session_state.uploaded_file = None
@@ -1323,6 +1826,12 @@ elif st.session_state.mode == "bdc":
                     st.session_state.uploaded_file = None
                     st.session_state.show_ocr_results = False
                     st.session_state.ocr_result = None
+                    st.rerun()
+            
+            with col3:
+                if st.button("📊 Tester autre image", use_container_width=True, type="secondary", key="bdc_test_another"):
+                    st.session_state.uploaded_file = None
+                    st.session_state.show_ocr_results = False
                     st.rerun()
         
         st.markdown("</div>", unsafe_allow_html=True)
