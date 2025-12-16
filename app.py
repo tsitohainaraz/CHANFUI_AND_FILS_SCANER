@@ -292,9 +292,9 @@ SHEET_ID = "1FooEwQBwLjvyjAsvHu4eDes0o-eEm92fbEWv6maBNyE"
 # Les GIDs sont corrects selon votre lien
 SHEET_GIDS = {
     "FACTURE EN COMPTE": 16102465,  # Onglet FACT
-    "BDC LEADERPRICE": 95472891,    # Onglet BDC
-    "BDC SUPERMAKI": 95472891,      # Onglet BDC
-    "BDC ULYS": 95472891            # Onglet BDC
+    "BDC LEADERPRICE": 954728911,    # Onglet BDC
+    "BDC SUPERMAKI": 954728911,      # Onglet BDC
+    "BDC ULYS": 954728911            # Onglet BDC
 }
 
 # ============================================================
@@ -1291,3 +1291,4 @@ st.markdown(f"""
     <p><strong>{BRAND_TITLE}</strong> • Scanner Pro • © {datetime.now().strftime("%Y")}</p>
 </div>
 """, unsafe_allow_html=True)
+
