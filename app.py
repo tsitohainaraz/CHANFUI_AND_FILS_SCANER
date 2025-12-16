@@ -28,9 +28,9 @@ st.set_page_config(
 # SYSTÈME DE LOGIN
 # ============================================================
 USERS = {
-    "Pathou M": "CF2",
-    "Elodie R": "CF3", 
-    "Laetitia C": "CF3"
+    "Pathou M": "CF3",
+    "Elodie R": "CF2", 
+    "Laetitia C": "CF1"
 }
 
 # ============================================================
@@ -1581,3 +1581,4 @@ st.markdown(f"""
     <p style="font-size: 0.8rem; opacity: 0.8;">Optimisé pour la lisibilité • Interface professionnelle • S2M</p>
 </div>
 """, unsafe_allow_html=True)
+
