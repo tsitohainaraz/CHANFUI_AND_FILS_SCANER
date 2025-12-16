@@ -287,7 +287,7 @@ SHEET_IDS = {
 }
 
 SHEET_GIDS = {
-    "FACTURE EN COMPTE": 72936741,
+    "FACTURE EN COMPTE": 2108722556,
     "BDC LEADERPRICE": 1487110894,
     "BDC SUPERMAKI": 1487110894,
     "BDC ULYS": 1487110894
@@ -1152,3 +1152,4 @@ st.markdown(f"""
     <p><strong>{BRAND_TITLE}</strong> • Scanner Pro • © {datetime.now().strftime("%Y")}</p>
 </div>
 """, unsafe_allow_html=True)
+
