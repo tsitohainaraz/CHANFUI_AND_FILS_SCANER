@@ -12,6 +12,7 @@ import os
 import time
 from dateutil import parser
 from typing import List, Tuple, Dict, Any
+import hashlib
 
 # ============================================================
 # CONFIGURATION STREAMLIT
@@ -299,6 +300,16 @@ st.markdown(f"""
         border-radius: 12px;
         margin: 1rem 0;
         color: {PALETTE['text_dark']} !important;
+    }}
+    
+    .duplicate-box {{
+        background: #FFF8E1;
+        border-left: 4px solid {PALETTE['warning']};
+        padding: 1.5rem;
+        border-radius: 12px;
+        margin: 1.5rem 0;
+        color: {PALETTE['text_dark']} !important;
+        border: 2px solid {PALETTE['warning']};
     }}
     
     /* Champs de formulaire */
@@ -847,7 +858,146 @@ EXTRACTION_FUNCTIONS = {
 }
 
 # ============================================================
-# GOOGLE SHEETS FUNCTIONS
+# FONCTIONS DE DÉTECTION DE DOUBLONS
+# ============================================================
+def generate_document_hash(document_type: str, extracted_data: dict) -> str:
+    """
+    Génère un hash unique pour un document basé sur son type et ses données clés
+    pour détecter les doublons.
+    """
+    if document_type == "FACTURE EN COMPTE":
+        # Pour les factures, on utilise le numéro de facture et le client
+        key_data = f"{document_type}_{extracted_data.get('facture_numero', '')}_{extracted_data.get('doit', '')}"
+    else:
+        # Pour les BDC, on utilise le numéro de BDC et le client
+        key_data = f"{document_type}_{extracted_data.get('numero', '')}_{extracted_data.get('client', '')}"
+    
+    # Ajouter la date pour plus de précision
+    if 'date' in extracted_data:
+        key_data += f"_{extracted_data['date']}"
+    
+    # Générer un hash MD5
+    return hashlib.md5(key_data.encode()).hexdigest()
+
+def check_for_duplicates(document_type: str, extracted_data: dict, worksheet) -> Tuple[bool, List[Dict]]:
+    """
+    Vérifie si un document similaire existe déjà dans Google Sheets.
+    Retourne (True, données_dupliquées) si des doublons sont trouvés.
+    """
+    try:
+        # Lire toutes les données de la feuille
+        all_data = worksheet.get_all_values()
+        
+        if len(all_data) <= 1:  # Seulement l'en-tête ou vide
+            return False, []
+        
+        # Déterminer les colonnes à vérifier selon le type de document
+        if document_type == "FACTURE EN COMPTE":
+            # Pour les factures : vérifier NF (colonne E) et Client (colonne B)
+            nf_col = 4  # Colonne E (0-based index)
+            client_col = 1  # Colonne B (0-based index)
+            
+            current_nf = extracted_data.get('facture_numero', '')
+            current_client = extracted_data.get('doit', '')
+            
+            duplicates = []
+            for i, row in enumerate(all_data[1:], start=2):  # Skip header
+                if len(row) > max(nf_col, client_col):
+                    if (row[nf_col] == current_nf and 
+                        row[client_col] == current_client and 
+                        current_nf != '' and current_client != ''):
+                        duplicates.append({
+                            'row_number': i,
+                            'data': row,
+                            'match_type': 'NF et Client identiques'
+                        })
+            
+            return len(duplicates) > 0, duplicates
+            
+        else:
+            # Pour les BDC : vérifier NBC (colonne D) et Client (colonne B)
+            nbc_col = 3  # Colonne D (0-based index)
+            client_col = 1  # Colonne B (0-based index)
+            
+            current_nbc = extracted_data.get('numero', '')
+            current_client = extracted_data.get('client', '')
+            
+            duplicates = []
+            for i, row in enumerate(all_data[1:], start=2):  # Skip header
+                if len(row) > max(nbc_col, client_col):
+                    if (row[nbc_col] == current_nbc and 
+                        row[client_col] == current_client and 
+                        current_nbc != '' and current_client != ''):
+                        duplicates.append({
+                            'row_number': i,
+                            'data': row,
+                            'match_type': 'NBC et Client identiques'
+                        })
+            
+            return len(duplicates) > 0, duplicates
+            
+    except Exception as e:
+        st.error(f"❌ Erreur lors de la vérification des doublons: {str(e)}")
+        return False, []
+
+def display_duplicate_warning(document_type: str, extracted_data: dict, duplicates: List[Dict]):
+    """
+    Affiche un avertissement pour les doublons détectés.
+    """
+    st.markdown('<div class="duplicate-box">', unsafe_allow_html=True)
+    
+    st.markdown(f'### ⚠️ DOUBLON DÉTECTÉ')
+    
+    if document_type == "FACTURE EN COMPTE":
+        st.markdown(f"""
+        **Document identique déjà présent dans la base :**
+        - **Type :** {document_type}
+        - **Numéro de facture :** {extracted_data.get('facture_numero', 'Non détecté')}
+        - **Client :** {extracted_data.get('doit', 'Non détecté')}
+        """)
+    else:
+        st.markdown(f"""
+        **Document identique déjà présent dans la base :**
+        - **Type :** {document_type}
+        - **Numéro BDC :** {extracted_data.get('numero', 'Non détecté')}
+        - **Client :** {extracted_data.get('client', 'Non détecté')}
+        """)
+    
+    # Afficher les doublons trouvés
+    st.markdown("**Enregistrements similaires trouvés :**")
+    for dup in duplicates:
+        st.markdown(f"- Ligne {dup['row_number']} : {dup['match_type']}")
+    
+    # Options pour l'utilisateur
+    st.markdown("**Que souhaitez-vous faire ?**")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("✅ Écraser et mettre à jour", key="overwrite_duplicate", 
+                    use_container_width=True, type="primary"):
+            st.session_state.duplicate_action = "overwrite"
+            st.session_state.duplicate_rows = [d['row_number'] for d in duplicates]
+            st.rerun()
+    
+    with col2:
+        if st.button("📝 Ajouter comme nouveau", key="add_new_duplicate", 
+                    use_container_width=True):
+            st.session_state.duplicate_action = "add_new"
+            st.rerun()
+    
+    with col3:
+        if st.button("❌ Ne pas importer", key="skip_duplicate", 
+                    use_container_width=True):
+            st.session_state.duplicate_action = "skip"
+            st.rerun()
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    return False  # Retourne False pour indiquer que le traitement est en attente
+
+# ============================================================
+# GOOGLE SHEETS FUNCTIONS (modifiées pour gérer les doublons)
 # ============================================================
 def get_worksheet(document_type: str):
     try:
@@ -955,7 +1105,11 @@ def prepare_rows_for_sheet(document_type: str, data: dict, edited_df: pd.DataFra
         st.error(f"❌ Erreur lors de la préparation des données: {str(e)}")
         return []
 
-def save_to_google_sheets_with_table(document_type: str, data: dict, edited_df: pd.DataFrame):
+def save_to_google_sheets_with_table(document_type: str, data: dict, edited_df: pd.DataFrame, 
+                                    duplicate_action: str = None, duplicate_rows: List[int] = None):
+    """
+    Version modifiée pour gérer les doublons.
+    """
     try:
         ws = get_worksheet(document_type)
         
@@ -969,6 +1123,26 @@ def save_to_google_sheets_with_table(document_type: str, data: dict, edited_df: 
             st.warning("⚠️ Aucune donnée à enregistrer")
             return False, "Aucune donnée"
         
+        # Si on doit écraser des doublons
+        if duplicate_action == "overwrite" and duplicate_rows:
+            try:
+                # Supprimer les lignes dupliquées (en ordre inverse pour éviter les décalages)
+                duplicate_rows.sort(reverse=True)
+                for row_num in duplicate_rows:
+                    ws.delete_rows(row_num)
+                
+                st.info(f"🗑️ {len(duplicate_rows)} ligne(s) dupliquée(s) supprimée(s)")
+                
+            except Exception as e:
+                st.error(f"❌ Erreur lors de la suppression des doublons: {str(e)}")
+                return False, str(e)
+        
+        # Vérifier s'il faut ajouter ou sauter
+        if duplicate_action == "skip":
+            st.warning("⏸️ Import annulé - Document ignoré")
+            return True, "Document ignoré (doublon)"
+        
+        # Afficher l'aperçu
         st.info("📋 **Aperçu des données à enregistrer:**")
         
         if document_type == "FACTURE EN COMPTE":
@@ -987,13 +1161,19 @@ def save_to_google_sheets_with_table(document_type: str, data: dict, edited_df: 
             else:
                 ws.append_rows(new_rows)
             
-            st.success(f"✅ {len(new_rows)} ligne(s) enregistrée(s) avec succès dans Google Sheets!")
+            action_msg = "enregistrée(s)"
+            if duplicate_action == "overwrite":
+                action_msg = "mise(s) à jour"
+            elif duplicate_action == "add_new":
+                action_msg = "ajoutée(s) comme nouvelle(s)"
+            
+            st.success(f"✅ {len(new_rows)} ligne(s) {action_msg} avec succès dans Google Sheets!")
             
             sheet_url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit#gid={SHEET_GIDS[document_type]}"
             st.markdown(f'<div class="info-box">🔗 <a href="{sheet_url}" target="_blank">Ouvrir Google Sheets</a></div>', unsafe_allow_html=True)
             
             st.balloons()
-            return True, f"{len(new_rows)} lignes enregistrées"
+            return True, f"{len(new_rows)} lignes {action_msg}"
             
         except Exception as e:
             st.error(f"❌ Erreur lors de l'enregistrement dans le tableau: {str(e)}")
@@ -1020,7 +1200,7 @@ def save_to_google_sheets_with_table(document_type: str, data: dict, edited_df: 
         return False, str(e)
 
 # ============================================================
-# SESSION STATE
+# SESSION STATE (ajout des états pour les doublons)
 # ============================================================
 if "document_type" not in st.session_state:
     st.session_state.document_type = ""
@@ -1034,6 +1214,18 @@ if "show_results" not in st.session_state:
     st.session_state.show_results = False
 if "processing" not in st.session_state:
     st.session_state.processing = False
+if "duplicate_check_done" not in st.session_state:
+    st.session_state.duplicate_check_done = False
+if "duplicate_found" not in st.session_state:
+    st.session_state.duplicate_found = False
+if "duplicate_action" not in st.session_state:
+    st.session_state.duplicate_action = None
+if "duplicate_rows" not in st.session_state:
+    st.session_state.duplicate_rows = []
+if "data_for_sheets" not in st.session_state:
+    st.session_state.data_for_sheets = None
+if "edited_df" not in st.session_state:
+    st.session_state.edited_df = None
 
 # ============================================================
 # HEADER AVEC LOGO - DESIGN OPTIMISÉ
@@ -1141,6 +1333,9 @@ if uploaded and uploaded != st.session_state.uploaded_file:
     st.session_state.ocr_result = None
     st.session_state.show_results = False
     st.session_state.processing = True
+    st.session_state.duplicate_check_done = False
+    st.session_state.duplicate_found = False
+    st.session_state.duplicate_action = None
     
     # Affichage de l'aperçu
     st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -1259,6 +1454,9 @@ if st.session_state.show_results and st.session_state.ocr_result and not st.sess
             "adresse_livraison": adresse
         }
     
+    # Stocker les données pour usage ultérieur
+    st.session_state.data_for_sheets = data_for_sheets
+    
     st.markdown('</div>', unsafe_allow_html=True)
     
     # Articles détectés
@@ -1320,6 +1518,9 @@ if st.session_state.show_results and st.session_state.ocr_result and not st.sess
                 key="bdc_articles_editor_empty"
             )
     
+    # Stocker le dataframe édité
+    st.session_state.edited_df = edited_df
+    
     # Statistiques
     if articles:
         total_items = len(articles)
@@ -1337,22 +1538,116 @@ if st.session_state.show_results and st.session_state.ocr_result and not st.sess
     
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # Bouton d'export Google Sheets
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<h4>📤 Export vers Google Sheets</h4>', unsafe_allow_html=True)
+    # ============================================================
+    # VÉRIFICATION DES DOUBLONS
+    # ============================================================
+    if not st.session_state.duplicate_check_done:
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown('<h4>🔍 Vérification des doublons</h4>', unsafe_allow_html=True)
+        
+        # Bouton pour vérifier les doublons
+        if st.button("🔎 Vérifier si le document existe déjà", use_container_width=True, key="check_duplicates"):
+            with st.spinner("Recherche de documents similaires..."):
+                ws = get_worksheet(st.session_state.document_type)
+                if ws:
+                    duplicate_found, duplicates = check_for_duplicates(
+                        st.session_state.document_type,
+                        data_for_sheets,
+                        ws
+                    )
+                    
+                    if duplicate_found:
+                        st.session_state.duplicate_found = True
+                        st.session_state.duplicate_rows = [d['row_number'] for d in duplicates]
+                        st.session_state.duplicate_check_done = True
+                        st.rerun()
+                    else:
+                        st.session_state.duplicate_found = False
+                        st.session_state.duplicate_check_done = True
+                        st.success("✅ Aucun doublon trouvé - Le document est unique")
+                        st.rerun()
+                else:
+                    st.error("❌ Impossible de vérifier les doublons - Connexion échouée")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
     
-    if st.button("💾 Enregistrer dans Google Sheets", use_container_width=True, key="save_to_sheets"):
-        try:
-            success, message = save_to_google_sheets_with_table(
-                st.session_state.document_type,
-                data_for_sheets,
-                edited_df
-            )
-            
-        except Exception as e:
-            st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
+    # ============================================================
+    # GESTION DES DOUBLONS DÉTECTÉS
+    # ============================================================
+    if st.session_state.duplicate_check_done and st.session_state.duplicate_found:
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown('<h4>⚠️ Gestion des doublons</h4>', unsafe_allow_html=True)
+        
+        # Afficher l'alerte de doublon
+        display_duplicate_warning(
+            st.session_state.document_type,
+            data_for_sheets,
+            [{'row_number': row, 'match_type': 'Document identique'} for row in st.session_state.duplicate_rows]
+        )
+        
+        st.markdown('</div>', unsafe_allow_html=True)
     
-    st.markdown('</div>', unsafe_allow_html=True)
+    # ============================================================
+    # EXPORT VERS GOOGLE SHEETS (selon l'action choisie)
+    # ============================================================
+    if (st.session_state.duplicate_check_done and not st.session_state.duplicate_found) or \
+       (st.session_state.duplicate_check_done and st.session_state.duplicate_action):
+        
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown('<h4>📤 Export vers Google Sheets</h4>', unsafe_allow_html=True)
+        
+        # Déterminer l'action à prendre
+        action = None
+        if st.session_state.duplicate_action:
+            action = st.session_state.duplicate_action
+        
+        if st.button("💾 Enregistrer dans Google Sheets", use_container_width=True, key="save_to_sheets"):
+            try:
+                success, message = save_to_google_sheets_with_table(
+                    st.session_state.document_type,
+                    st.session_state.data_for_sheets,
+                    st.session_state.edited_df,
+                    duplicate_action=action,
+                    duplicate_rows=st.session_state.duplicate_rows if action == "overwrite" else None
+                )
+                
+                if success:
+                    # Réinitialiser les états des doublons
+                    st.session_state.duplicate_check_done = False
+                    st.session_state.duplicate_found = False
+                    st.session_state.duplicate_action = None
+                    st.session_state.duplicate_rows = []
+                    
+                    # Option pour scanner un nouveau document
+                    st.markdown('<div class="info-box">', unsafe_allow_html=True)
+                    st.markdown("**Enregistrement terminé. Que souhaitez-vous faire ?**")
+                    
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button("📄 Scanner un nouveau document", use_container_width=True):
+                            st.session_state.uploaded_file = None
+                            st.session_state.uploaded_image = None
+                            st.session_state.ocr_result = None
+                            st.session_state.show_results = False
+                            st.rerun()
+                    
+                    with col2:
+                        if st.button("🔄 Recommencer avec le même type", use_container_width=True):
+                            st.session_state.uploaded_file = None
+                            st.session_state.uploaded_image = None
+                            st.session_state.ocr_result = None
+                            st.session_state.show_results = False
+                            st.session_state.duplicate_check_done = False
+                            st.session_state.duplicate_found = False
+                            st.session_state.duplicate_action = None
+                            st.rerun()
+                    
+                    st.markdown('</div>', unsafe_allow_html=True)
+                
+            except Exception as e:
+                st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
     
     # OCR brut (optionnel)
     st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -1373,6 +1668,9 @@ with col_nav1:
         st.session_state.uploaded_image = None
         st.session_state.ocr_result = None
         st.session_state.show_results = False
+        st.session_state.duplicate_check_done = False
+        st.session_state.duplicate_found = False
+        st.session_state.duplicate_action = None
         st.rerun()
 
 with col_nav2:
@@ -1381,6 +1679,9 @@ with col_nav2:
         st.session_state.uploaded_image = None
         st.session_state.ocr_result = None
         st.session_state.show_results = False
+        st.session_state.duplicate_check_done = False
+        st.session_state.duplicate_found = False
+        st.session_state.duplicate_action = None
         st.rerun()
 
 # ============================================================
@@ -1390,6 +1691,6 @@ st.markdown("---")
 st.markdown(f"""
 <div style="text-align: center; color: {PALETTE['text_medium']}; font-size: 0.9rem; padding: 1.5rem; background: {PALETTE['card_bg']}; border-radius: 12px; margin-top: 2rem; border-top: 1px solid {PALETTE['border']}">
     <p><strong>{BRAND_TITLE}</strong> • Scanner Pro • © {datetime.now().strftime("%Y")}</p>
-    <p style="font-size: 0.8rem; margin-top: 0.5rem; opacity: 0.8;">Design optimisé pour la lisibilité • Interface S2M</p>
+    <p style="font-size: 0.8rem; margin-top: 0.5rem; opacity: 0.8;">Design optimisé pour la lisibilité • Interface S2M • Détection de doublons intégrée</p>
 </div>
 """, unsafe_allow_html=True)
