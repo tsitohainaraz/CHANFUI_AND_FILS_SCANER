@@ -207,7 +207,7 @@ st.markdown(f"""
     
     .doc-option {{
         background: {PALETTE['card_bg']};
-        color: {PALETTE['text_dark']} !important;
+        color: {PALETTE['card_bg']} !important;     // Texte blanc
         padding: 1.8rem 1.2rem;
         border-radius: 16px;
         border: 1px solid {PALETTE['border']};
@@ -1379,3 +1379,4 @@ st.markdown(f"""
     <p style="font-size: 0.8rem; margin-top: 0.5rem; opacity: 0.8;">Design optimisé pour la lisibilité • Interface S2M</p>
 </div>
 """, unsafe_allow_html=True)
+
