@@ -25,6 +25,208 @@ st.set_page_config(
 )
 
 # ============================================================
+# SYSTÈME D'AUTHENTIFICATION
+# ============================================================
+# Utilisateurs autorisés avec leurs codes
+AUTHORIZED_USERS = {
+    "Pathou M": "CFF3",
+    "Elodie R.": "CFF2", 
+    "Laetitia C": "CFF1"
+}
+
+# Initialisation des états de session pour l'authentification
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+if "username" not in st.session_state:
+    st.session_state.username = ""
+if "login_attempts" not in st.session_state:
+    st.session_state.login_attempts = 0
+if "locked_until" not in st.session_state:
+    st.session_state.locked_until = None
+
+# Fonction de vérification d'authentification
+def check_authentication():
+    # Vérifier si le compte est verrouillé temporairement
+    if st.session_state.locked_until and datetime.now() < st.session_state.locked_until:
+        remaining_time = st.session_state.locked_until - datetime.now()
+        st.error(f"🛑 Compte temporairement verrouillé. Réessayez dans {int(remaining_time.total_seconds())} secondes.")
+        return False
+    
+    return st.session_state.authenticated
+
+# Fonction de connexion
+def login(username, password):
+    # Vérifier si le compte est verrouillé
+    if st.session_state.locked_until and datetime.now() < st.session_state.locked_until:
+        return False, "Compte temporairement verrouillé"
+    
+    # Vérifier les identifiants
+    if username in AUTHORIZED_USERS and AUTHORIZED_USERS[username] == password:
+        st.session_state.authenticated = True
+        st.session_state.username = username
+        st.session_state.login_attempts = 0
+        st.session_state.locked_until = None
+        return True, "Connexion réussie"
+    else:
+        st.session_state.login_attempts += 1
+        
+        # Verrouiller après 3 tentatives échouées
+        if st.session_state.login_attempts >= 3:
+            lock_duration = 300  # 5 minutes en secondes
+            st.session_state.locked_until = datetime.now() + pd.Timedelta(seconds=lock_duration)
+            return False, f"Trop de tentatives échouées. Compte verrouillé pour {lock_duration//60} minutes."
+        
+        return False, f"Identifiants incorrects. Tentatives restantes: {3 - st.session_state.login_attempts}"
+
+# Fonction de déconnexion
+def logout():
+    st.session_state.authenticated = False
+    st.session_state.username = ""
+    st.session_state.document_type = ""
+    st.session_state.uploaded_file = None
+    st.session_state.uploaded_image = None
+    st.session_state.ocr_result = None
+    st.session_state.show_results = False
+    st.rerun()
+
+# ============================================================
+# PAGE DE CONNEXION
+# ============================================================
+if not check_authentication():
+    # CSS pour la page de connexion
+    st.markdown("""
+    <style>
+        .login-container {
+            max-width: 400px;
+            margin: 50px auto;
+            padding: 40px;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .login-title {
+            color: #27414A;
+            font-size: 2rem;
+            font-weight: 800;
+            margin-bottom: 10px;
+        }
+        .login-subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1rem;
+        }
+        .login-logo {
+            height: 80px;
+            margin-bottom: 20px;
+        }
+        .stTextInput > div > div > input {
+            border: 2px solid #E0E0E0;
+            border-radius: 10px;
+            padding: 12px 15px;
+            font-size: 16px;
+        }
+        .stTextInput > div > div > input:focus {
+            border-color: #27414A;
+            box-shadow: 0 0 0 2px rgba(39, 65, 74, 0.2);
+        }
+        .stButton > button {
+            background: #27414A;
+            color: white;
+            font-weight: 600;
+            border: none;
+            padding: 14px 20px;
+            border-radius: 10px;
+            width: 100%;
+            font-size: 16px;
+            margin-top: 10px;
+            transition: all 0.3s ease;
+        }
+        .stButton > button:hover {
+            background: #1F2F35;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(39, 65, 74, 0.3);
+        }
+        .user-list {
+            background: #F8F9FA;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 30px;
+            text-align: left;
+        }
+        .user-item {
+            padding: 8px 0;
+            border-bottom: 1px solid #E0E0E0;
+        }
+        .user-item:last-child {
+            border-bottom: none;
+        }
+        .security-warning {
+            background: #FFF3CD;
+            border: 1px solid #FFC107;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            font-size: 0.9rem;
+            color: #856404;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Conteneur principal de connexion
+    st.markdown('<div class="login-container">', unsafe_allow_html=True)
+    
+    # Logo
+    if os.path.exists("CF_LOGOS.png"):
+        st.image("CF_LOGOS.png", width=80, output_format="PNG")
+    else:
+        st.markdown("🍷")
+    
+    # Titre
+    st.markdown('<h1 class="login-title">CHAN FOUI ET FILS</h1>', unsafe_allow_html=True)
+    st.markdown('<p class="login-subtitle">Système de Scanner Pro - Accès Restreint</p>', unsafe_allow_html=True)
+    
+    # Formulaire de connexion
+    username = st.text_input("👤 Nom d'utilisateur", placeholder="Entrez votre nom")
+    password = st.text_input("🔒 Code d'accès", type="password", placeholder="Entrez votre code CFF")
+    
+    if st.button("🔓 Se connecter", use_container_width=True):
+        if username and password:
+            success, message = login(username, password)
+            if success:
+                st.success(f"✅ {message}")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error(f"❌ {message}")
+        else:
+            st.warning("⚠️ Veuillez remplir tous les champs")
+    
+    # Liste des utilisateurs autorisés
+    st.markdown('<div class="user-list">', unsafe_allow_html=True)
+    st.markdown("**👥 Utilisateurs autorisés :**")
+    for user, code in AUTHORIZED_USERS.items():
+        st.markdown(f'<div class="user-item"><strong>{user}</strong> : Code {code}</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Avertissement de sécurité
+    st.markdown("""
+    <div class="security-warning">
+        <strong>⚠️ Sécurité :</strong> Ce système est réservé au personnel autorisé.<br>
+        • Ne partagez pas vos identifiants<br>
+        • Déconnectez-vous après utilisation<br>
+        • 3 tentatives maximum avant verrouillage
+    </div>
+    """, unsafe_allow_html=True)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.stop()
+
+# ============================================================
+# APPLICATION PRINCIPALE (visible uniquement si authentifié)
+# ============================================================
+
+# ============================================================
 # THÈME CHAN FOUI & FILS OPTIMISÉ POUR LISIBILITÉ
 # ============================================================
 LOGO_FILENAME = "CF_LOGOS.png"
@@ -71,6 +273,39 @@ st.markdown(f"""
         box-shadow: 0 4px 20px rgba(39, 65, 74, 0.08);
         text-align: center;
         border: 1px solid {PALETTE['border']};
+        position: relative;
+    }}
+    
+    .user-info {{
+        position: absolute;
+        top: 20px;
+        right: 20px;
+        background: {PALETTE['accent']};
+        color: white;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-size: 0.9rem;
+        font-weight: 600;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }}
+    
+    .logout-btn {{
+        background: transparent;
+        border: 1px solid white;
+        color: white;
+        padding: 4px 12px;
+        border-radius: 15px;
+        font-size: 0.8rem;
+        margin-left: 10px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }}
+    
+    .logout-btn:hover {{
+        background: white;
+        color: {PALETTE['accent']};
     }}
     
     .logo-title-wrapper {{
@@ -354,6 +589,12 @@ st.markdown(f"""
         .header-container {{
             padding: 1.5rem;
             margin: 1rem 0.5rem;
+        }}
+        
+        .user-info {{
+            position: static;
+            margin: 0 auto 1rem auto;
+            width: fit-content;
         }}
         
         .brand-title {{
@@ -1232,6 +1473,14 @@ if "edited_df" not in st.session_state:
 # ============================================================
 st.markdown('<div class="header-container">', unsafe_allow_html=True)
 
+# Informations de l'utilisateur connecté et bouton de déconnexion
+st.markdown(f'''
+<div class="user-info">
+    👤 {st.session_state.username}
+    <button class="logout-btn" onclick="window.location.href='?logout=true'">🚪 Déconnexion</button>
+</div>
+''', unsafe_allow_html=True)
+
 st.markdown('<div class="logo-title-wrapper">', unsafe_allow_html=True)
 
 # Logo
@@ -1246,9 +1495,13 @@ st.markdown(f'<h1 class="brand-title">{BRAND_TITLE}</h1>', unsafe_allow_html=Tru
 st.markdown('</div>', unsafe_allow_html=True)
 
 # Sous-titre
-st.markdown(f'<p class="brand-sub">{BRAND_SUB}</p>', unsafe_allow_html=True)
+st.markdown(f'<p class="brand-sub">{BRAND_SUB} - Connecté en tant que {st.session_state.username}</p>', unsafe_allow_html=True)
 
 st.markdown('</div>', unsafe_allow_html=True)
+
+# Gestion de la déconnexion via paramètre URL
+if st.query_params.get("logout"):
+    logout()
 
 # ============================================================
 # APERÇU D'IMAGE PERMANENT
@@ -1685,12 +1938,23 @@ with col_nav2:
         st.rerun()
 
 # ============================================================
-# FOOTER
+# BOUTON DE DÉCONNEXION
 # ============================================================
 st.markdown("---")
+col_logout = st.columns([1])
+with col_logout[0]:
+    if st.button("🚪 Déconnexion", use_container_width=True, type="secondary"):
+        logout()
+
+# ============================================================
+# FOOTER
+# ============================================================
 st.markdown(f"""
 <div style="text-align: center; color: {PALETTE['text_medium']}; font-size: 0.9rem; padding: 1.5rem; background: {PALETTE['card_bg']}; border-radius: 12px; margin-top: 2rem; border-top: 1px solid {PALETTE['border']}">
     <p><strong>{BRAND_TITLE}</strong> • Scanner Pro • © {datetime.now().strftime("%Y")}</p>
-    <p style="font-size: 0.8rem; margin-top: 0.5rem; opacity: 0.8;">Design optimisé pour la lisibilité • Interface S2M • Détection de doublons intégrée</p>
+    <p style="font-size: 0.8rem; margin-top: 0.5rem; opacity: 0.8;">
+        Connecté en tant que <strong>{st.session_state.username}</strong> • 
+        Design optimisé pour la lisibilité • Interface S2M • Détection de doublons intégrée
+    </p>
 </div>
 """, unsafe_allow_html=True)
