@@ -286,12 +286,15 @@ st.markdown(f"""
 # ============================================================
 # GOOGLE SHEETS CONFIGURATION
 # ============================================================
+# Lien vers votre sheet : https://docs.google.com/spreadsheets/d/1FooEwQBwLjvyjAsvHu4eDes0o-eEm92fbEWv6maBNyE
 SHEET_ID = "1FooEwQBwLjvyjAsvHu4eDes0o-eEm92fbEWv6maBNyE"
+
+# Les GIDs sont corrects selon votre lien
 SHEET_GIDS = {
-    "FACTURE EN COMPTE": 16102465,
-    "BDC LEADERPRICE": 95472891,
-    "BDC SUPERMAKI": 95472891,
-    "BDC ULYS": 95472891
+    "FACTURE EN COMPTE": 16102465,  # Onglet FACT
+    "BDC LEADERPRICE": 95472891,    # Onglet BDC
+    "BDC SUPERMAKI": 95472891,      # Onglet BDC
+    "BDC ULYS": 95472891            # Onglet BDC
 }
 
 # ============================================================
@@ -336,8 +339,11 @@ def format_date_french(date_str: str) -> str:
                 continue
         
         # Si aucun format ne fonctionne, essayer avec dateutil
-        date_obj = parser.parse(date_str, dayfirst=True)
-        return date_obj.strftime("%Y-%m-%d")
+        try:
+            date_obj = parser.parse(date_str, dayfirst=True)
+            return date_obj.strftime("%Y-%m-%d")
+        except:
+            return datetime.now().strftime("%Y-%m-%d")
     except:
         return datetime.now().strftime("%Y-%m-%d")
 
@@ -353,7 +359,8 @@ def get_month_from_date(date_str: str) -> str:
         date_obj = parser.parse(date_str, dayfirst=True)
         return months_fr[date_obj.month]
     except:
-        return datetime.now().strftime("%B").lower()
+        # Si on ne peut pas parser, retourner le mois actuel
+        return months_fr[datetime.now().month]
 
 def format_quantity(qty: Any) -> str:
     """Formate la quantité en remplaçant . par ,"""
@@ -403,7 +410,9 @@ def extract_facture(text: str):
     # Date et mois
     m = re.search(r"le\s+(\d{1,2}\s+\w+\s+\d{4})", text, re.IGNORECASE)
     if m:
-        result["date"] = m.group(1)
+        date_text = m.group(1)
+        result["date"] = date_text
+        
         # Extraire le mois du texte de date
         months_fr = {
             "janvier": "janvier", "février": "février", "fevrier": "février",
@@ -413,7 +422,7 @@ def extract_facture(text: str):
             "novembre": "novembre", "décembre": "décembre", "decembre": "décembre"
         }
         for month_fr, month_norm in months_fr.items():
-            if month_fr in result["date"].lower():
+            if month_fr in date_text.lower():
                 result["mois"] = month_norm
                 break
     
@@ -708,225 +717,216 @@ EXTRACTION_FUNCTIONS = {
 }
 
 # ============================================================
-# GOOGLE SHEETS FUNCTIONS
+# GOOGLE SHEETS FUNCTIONS - POUR TABLEAUX STRUCTURÉS
 # ============================================================
 def get_worksheet(document_type: str):
+    """Récupère la feuille Google correspondante"""
     try:
-        if "gcp_sheet" in st.secrets:
-            sa_info = dict(st.secrets["gcp_sheet"])
-        elif "google_service_account" in st.secrets:
-            sa_info = dict(st.secrets["google_service_account"])
-        else:
+        # Vérifier si les credentials sont présents
+        if "gcp_sheet" not in st.secrets:
+            st.error("❌ Les credentials Google Sheets ne sont pas configurés dans st.secrets")
             return None
         
-        client = gspread.service_account_from_dict(sa_info)
-        sh = client.open_by_key(SHEET_ID)
+        # Créer le client gspread
+        sa_info = dict(st.secrets["gcp_sheet"])
+        gc = gspread.service_account_from_dict(sa_info)
+        
+        # Ouvrir la feuille
+        sh = gc.open_by_key(SHEET_ID)
+        
+        # Obtenir le GID
+        target_gid = SHEET_GIDS.get(document_type)
         
         # Chercher la feuille par GID
-        target_gid = SHEET_GIDS.get(document_type)
-        for ws in sh.worksheets():
-            if int(ws.id) == target_gid:
-                return ws
+        for worksheet in sh.worksheets():
+            if int(worksheet.id) == target_gid:
+                return worksheet
         
+        # Si la feuille n'est pas trouvée
+        st.error(f"❌ La feuille avec GID {target_gid} n'a pas été trouvée")
+        st.info("ℹ️ Vérifiez que vous avez bien créé un tableau dans cet onglet")
         return None
         
+    except gspread.exceptions.APIError as e:
+        st.error(f"❌ Erreur API Google Sheets: {str(e)}")
+        return None
     except Exception as e:
-        st.error(f"Erreur Google Sheets: {str(e)}")
+        st.error(f"❌ Erreur lors de la connexion à Google Sheets: {str(e)}")
         return None
+
+def find_table_range(worksheet):
+    """Trouve la plage du tableau dans la feuille"""
+    try:
+        # Récupérer toutes les données
+        all_data = worksheet.get_all_values()
+        
+        if not all_data:
+            return "A1:I1"  # Retourne juste l'en-tête si vide
+        
+        # Chercher les en-têtes typiques
+        headers = ["Mois", "Client", "date", "NBC", "NF", "lien", "Magasin", "Produit", "Quantite"]
+        
+        # Vérifier la première ligne pour les en-têtes
+        first_row = all_data[0] if all_data else []
+        
+        # Si la première ligne contient les en-têtes, c'est bon
+        header_found = any(header in str(first_row) for header in headers)
+        
+        if header_found:
+            # Trouver la dernière ligne avec des données
+            last_row = len(all_data) + 1
+            
+            # Si la feuille est presque vide, commencer à la ligne 2
+            if len(all_data) <= 1:
+                return "A2:I2"
+            else:
+                return f"A{last_row}:I{last_row}"
+        else:
+            # Si pas d'en-têtes, on va ajouter à la première ligne vide
+            for i, row in enumerate(all_data, start=1):
+                if not any(cell.strip() for cell in row):
+                    return f"A{i}:I{i}"
+            
+            # Si toutes les lignes ont des données, ajouter à la fin
+            return f"A{len(all_data)+1}:I{len(all_data)+1}"
+            
+    except Exception as e:
+        st.error(f"❌ Erreur lors de la recherche de la plage: {str(e)}")
+        return "A2:I2"  # Par défaut
 
 def prepare_rows_for_sheet(document_type: str, data: dict, edited_df: pd.DataFrame) -> List[List[str]]:
     """Prépare les lignes pour l'insertion dans Google Sheets"""
     rows = []
     
-    if document_type == "FACTURE EN COMPTE":
-        # Format FACT: Mois|Client|date|NBC|NF|lien|Magasin|Produit|Quantite|
-        mois = data.get("mois", "")
-        client = data.get("doit", "")
-        date = format_date_french(data.get("date", ""))
-        nbc = data.get("bon_commande", "")
-        nf = data.get("facture_numero", "")
-        magasin = data.get("adresse_livraison", "")
-        
-        for _, row in edited_df.iterrows():
-            article = row.get("article", "")
-            quantite = format_quantity(row.get("bouteilles", ""))
-            
-            rows.append([
-                mois,           # Mois
-                client,         # Client (DOIT)
-                date,           # Date (AAAA-MM-JJ)
-                nbc,            # NBC
-                nf,             # NF
-                "",             # Lien (vide)
-                magasin,        # Magasin
-                article,        # Produit
-                quantite        # Quantité
-            ])
-    
-    else:  # BDC
-        # Format BDC: Mois|Client|Date émission|NBC|lien|Magasin|Produit|Quantite|
-        date_emission = data.get("date", "")
-        mois = get_month_from_date(date_emission)
-        client = map_client(data.get("client", ""))
-        date = format_date_french(date_emission)
-        nbc = data.get("numero", "")
-        magasin = data.get("adresse_livraison", "")
-        
-        for _, row in edited_df.iterrows():
-            if document_type == "FACTURE EN COMPTE":
-                article = row.get("article", "")
-                quantite = format_quantity(row.get("bouteilles", ""))
-            else:
-                article = row.get("Désignation", "")
-                quantite = format_quantity(row.get("Qté", ""))
-            
-            rows.append([
-                mois,           # Mois
-                client,         # Client (mappé)
-                date,           # Date émission (AAAA-MM-JJ)
-                nbc,            # NBC
-                "",             # Lien (vide)
-                magasin,        # Magasin
-                article,        # Produit
-                quantite        # Quantité
-            ])
-    
-    return rows
-
-def check_duplicates(worksheet, new_rows: List[List[str]], document_type: str) -> Tuple[List[int], List[List[str]]]:
-    """Vérifie les doublons et retourne les indices des lignes existantes et nouvelles lignes uniques"""
     try:
-        # Récupérer toutes les données existantes
-        existing_data = worksheet.get_all_values()
-        
-        if len(existing_data) <= 1:  # Seulement l'en-tête ou vide
-            return [], new_rows
-        
-        # Déterminer les colonnes clés pour la comparaison
         if document_type == "FACTURE EN COMPTE":
-            # Clés: Mois, Client, NBC, NF, Produit
-            key_columns = [0, 1, 3, 4, 7]
-        else:  # BDC
-            # Clés: Mois, Client, NBC, Produit
-            key_columns = [0, 1, 3, 6]
-        
-        # Préparer un set des clés existantes
-        existing_keys = set()
-        duplicate_indices = []
-        
-        for i, row in enumerate(existing_data[1:], start=2):  # Commence à la ligne 2 (après l'en-tête)
-            if len(row) >= max(key_columns) + 1:
-                key = tuple(str(row[col]).strip().lower() for col in key_columns)
-                existing_keys.add(key)
-        
-        # Vérifier les nouvelles lignes
-        unique_new_rows = []
-        for new_row in new_rows:
-            if len(new_row) >= max(key_columns) + 1:
-                new_key = tuple(str(new_row[col]).strip().lower() for col in key_columns)
+            # Format FACT: Mois|Client|date|NBC|NF|lien|Magasin|Produit|Quantite|
+            mois = data.get("mois", "")
+            client = data.get("doit", "")
+            date = format_date_french(data.get("date", ""))
+            nbc = data.get("bon_commande", "")
+            nf = data.get("facture_numero", "")
+            magasin = data.get("adresse_livraison", "")
+            
+            for _, row in edited_df.iterrows():
+                article = str(row.get("article", "")).strip()
+                quantite = format_quantity(row.get("bouteilles", ""))
                 
-                # Vérifier si cette clé existe déjà
-                is_duplicate = False
-                for i, existing_row in enumerate(existing_data[1:], start=2):
-                    if len(existing_row) >= max(key_columns) + 1:
-                        existing_key = tuple(str(existing_row[col]).strip().lower() for col in key_columns)
-                        if existing_key == new_key:
-                            duplicate_indices.append(i)
-                            is_duplicate = True
-                            break
+                rows.append([
+                    mois,           # Mois
+                    client,         # Client (DOIT)
+                    date,           # Date (AAAA-MM-JJ)
+                    nbc,            # NBC
+                    nf,             # NF
+                    "",             # Lien (vide)
+                    magasin,        # Magasin
+                    article,        # Produit
+                    quantite        # Quantité
+                ])
+        
+        else:  # BDC (LEADERPRICE, SUPERMAKI, ULYS)
+            # Format BDC: Mois|Client|Date émission|NBC|lien|Magasin|Produit|Quantite|
+            date_emission = data.get("date", "")
+            mois = get_month_from_date(date_emission)
+            client = map_client(data.get("client", ""))
+            date = format_date_french(date_emission)
+            nbc = data.get("numero", "")
+            magasin = data.get("adresse_livraison", "")
+            
+            for _, row in edited_df.iterrows():
+                article = str(row.get("Désignation", "")).strip()
+                quantite = format_quantity(row.get("Qté", ""))
                 
-                if not is_duplicate:
-                    unique_new_rows.append(new_row)
+                rows.append([
+                    mois,           # Mois
+                    client,         # Client (mappé)
+                    date,           # Date émission (AAAA-MM-JJ)
+                    nbc,            # NBC
+                    "",             # Lien (vide)
+                    magasin,        # Magasin
+                    article,        # Produit
+                    quantite        # Quantité
+                ])
         
-        # Supprimer les doublons en double dans la liste des indices
-        duplicate_indices = list(set(duplicate_indices))
-        duplicate_indices.sort(reverse=True)  # Trier en ordre décroissant pour la suppression
-        
-        return duplicate_indices, unique_new_rows
+        return rows
         
     except Exception as e:
-        st.error(f"Erreur lors de la vérification des doublons: {str(e)}")
-        return [], new_rows
+        st.error(f"❌ Erreur lors de la préparation des données: {str(e)}")
+        return []
 
-def save_to_google_sheets_with_duplicate_check(document_type: str, data: dict, edited_df: pd.DataFrame):
-    """Sauvegarde dans Google Sheets avec gestion des doublons"""
+def save_to_google_sheets_with_table(document_type: str, data: dict, edited_df: pd.DataFrame):
+    """Sauvegarde dans Google Sheets avec gestion des tableaux"""
     try:
+        # Récupérer la feuille
         ws = get_worksheet(document_type)
         
         if not ws:
-            st.error("❌ Impossible de se connecter à Google Sheets")
+            st.error("❌ Impossible de se connecter à Google Sheets. Vérifiez les credentials.")
             return False, "Erreur de connexion"
         
         # Préparer les nouvelles lignes
         new_rows = prepare_rows_for_sheet(document_type, data, edited_df)
         
         if not new_rows:
-            return False, "Aucune donnée à enregistrer"
+            st.warning("⚠️ Aucune donnée à enregistrer")
+            return False, "Aucune donnée"
         
-        # Vérifier les doublons
-        duplicate_indices, unique_new_rows = check_duplicates(ws, new_rows, document_type)
+        # Afficher un aperçu des données
+        st.info("📋 **Aperçu des données à enregistrer:**")
         
-        if duplicate_indices:
-            # Afficher l'alerte de doublons
-            st.warning(f"⚠️ **{len(duplicate_indices)} doublon(s) détecté(s)**")
-            st.markdown('<div class="warning-box">', unsafe_allow_html=True)
-            st.markdown("**Ces données existent déjà dans le sheet :**")
-            
-            # Afficher les doublons détectés
-            existing_data = ws.get_all_values()
-            for idx in duplicate_indices:
-                if idx <= len(existing_data):
-                    row_data = existing_data[idx-1]
-                    st.text(f"Ligne {idx-1}: {row_data}")
-            
-            st.markdown('</div>', unsafe_allow_html=True)
-            
-            # Options pour l'utilisateur
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if st.button("✅ Écraser les doublons", use_container_width=True, key="overwrite_duplicates"):
-                    # Supprimer les lignes en doublon
-                    for idx in duplicate_indices:
-                        try:
-                            ws.delete_rows(idx)
-                        except Exception as e:
-                            st.error(f"Erreur lors de la suppression de la ligne {idx}: {str(e)}")
-                    
-                    # Ajouter toutes les nouvelles lignes
-                    try:
-                        ws.append_rows(new_rows)
-                        st.success(f"✅ {len(new_rows)} ligne(s) enregistrée(s) avec écrasement des doublons!")
-                        return True, f"{len(new_rows)} lignes enregistrées"
-                    except Exception as e:
-                        st.error(f"Erreur lors de l'enregistrement: {str(e)}")
-                        return False, str(e)
-            
-            with col2:
-                if st.button("📝 Ajouter seulement les nouvelles", use_container_width=True, key="add_only_new"):
-                    # Ajouter seulement les lignes uniques
-                    if unique_new_rows:
-                        try:
-                            ws.append_rows(unique_new_rows)
-                            st.success(f"✅ {len(unique_new_rows)} nouvelle(s) ligne(s) ajoutée(s) (doublons ignorés)!")
-                            return True, f"{len(unique_new_rows)} nouvelles lignes ajoutées"
-                        except Exception as e:
-                            st.error(f"Erreur lors de l'enregistrement: {str(e)}")
-                            return False, str(e)
-                    else:
-                        st.warning("Toutes les lignes sont des doublons, rien n'a été ajouté.")
-                        return False, "Toutes les lignes sont des doublons"
-            
-            return False, "En attente de décision sur les doublons"
-        
+        # Créer un DataFrame pour l'aperçu
+        if document_type == "FACTURE EN COMPTE":
+            columns = ["Mois", "Client", "Date", "NBC", "NF", "Lien", "Magasin", "Produit", "Quantité"]
         else:
-            # Pas de doublons, ajouter toutes les lignes
-            try:
+            columns = ["Mois", "Client", "Date émission", "NBC", "Lien", "Magasin", "Produit", "Quantité"]
+        
+        preview_df = pd.DataFrame(new_rows, columns=columns)
+        st.dataframe(preview_df, use_container_width=True)
+        
+        # Trouver où ajouter les données (dans le tableau)
+        table_range = find_table_range(ws)
+        
+        # Ajouter les données
+        try:
+            # Si c'est une nouvelle ligne simple
+            if ":" in table_range and table_range.count(":") == 1:
+                # C'est une plage simple, utiliser append_rows
+                ws.append_rows(new_rows, table_range=table_range)
+            else:
+                # Sinon, ajouter à la fin
                 ws.append_rows(new_rows)
-                st.success(f"✅ {len(new_rows)} ligne(s) enregistrée(s) avec succès dans Google Sheets!")
-                return True, f"{len(new_rows)} lignes enregistrées"
-            except Exception as e:
-                st.error(f"Erreur lors de l'enregistrement: {str(e)}")
+            
+            st.success(f"✅ {len(new_rows)} ligne(s) enregistrée(s) avec succès dans Google Sheets!")
+            
+            # Afficher le lien vers le sheet
+            sheet_url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit#gid={SHEET_GIDS[document_type]}"
+            st.markdown(f'<div class="info-box">🔗 <a href="{sheet_url}" target="_blank">Ouvrir Google Sheets</a></div>', unsafe_allow_html=True)
+            
+            st.balloons()
+            return True, f"{len(new_rows)} lignes enregistrées"
+            
+        except Exception as e:
+            st.error(f"❌ Erreur lors de l'enregistrement dans le tableau: {str(e)}")
+            
+            # Essayer une méthode alternative
+            try:
+                st.info("🔄 Tentative alternative d'enregistrement...")
+                
+                # Récupérer toutes les données
+                all_data = ws.get_all_values()
+                
+                # Ajouter les nouvelles lignes
+                for row in new_rows:
+                    all_data.append(row)
+                
+                # Mettre à jour toute la feuille
+                ws.update('A1', all_data)
+                
+                st.success(f"✅ {len(new_rows)} ligne(s) enregistrée(s) avec méthode alternative!")
+                return True, f"{len(new_rows)} lignes enregistrées (méthode alternative)"
+                
+            except Exception as e2:
+                st.error(f"❌ Échec de la méthode alternative: {str(e2)}")
                 return False, str(e)
                 
     except Exception as e:
@@ -1244,15 +1244,12 @@ if st.session_state.show_results and st.session_state.ocr_result and not st.sess
     
     if st.button("💾 Enregistrer dans Google Sheets", use_container_width=True, key="save_to_sheets"):
         try:
-            success, message = save_to_google_sheets_with_duplicate_check(
+            success, message = save_to_google_sheets_with_table(
                 st.session_state.document_type,
                 data_for_sheets,
                 edited_df
             )
             
-            if success:
-                st.balloons()
-                
         except Exception as e:
             st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
     
