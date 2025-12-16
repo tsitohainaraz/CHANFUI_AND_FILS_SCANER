@@ -197,7 +197,7 @@ st.markdown(f"""
         box-shadow: 0 4px 20px rgba(39, 65, 74, 0.15);
     }}
     
-    /* Sélecteur de document - TEXTE BLANC */
+    /* Sélecteur de document */
     .doc-selector {{
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -206,15 +206,15 @@ st.markdown(f"""
     }}
     
     .doc-option {{
-        background: {PALETTE['primary_dark']};
-        color: {PALETTE['card_bg']} !important;
+        background: {PALETTE['card_bg']};
+        color: {PALETTE['card_bg']} !important;     // Texte blanc
         padding: 1.8rem 1.2rem;
         border-radius: 16px;
-        border: 1px solid {PALETTE['primary_dark']};
+        border: 1px solid {PALETTE['border']};
         transition: all 0.2s ease;
         cursor: pointer;
         text-align: center;
-        box-shadow: 0 3px 10px rgba(39, 65, 74, 0.1);
+        box-shadow: 0 3px 10px rgba(0, 0, 0, 0.04);
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -225,17 +225,16 @@ st.markdown(f"""
     
     .doc-option:hover {{
         transform: translateY(-3px);
-        box-shadow: 0 6px 20px rgba(39, 65, 74, 0.2);
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
         border-color: {PALETTE['accent']};
-        background: {PALETTE['primary_light']};
-        color: {PALETTE['card_bg']} !important;
+        background: {PALETTE['hover']};
     }}
     
     .doc-option.selected {{
-        background: {PALETTE['accent']};
+        background: {PALETTE['primary_dark']};
         color: {PALETTE['card_bg']} !important;
-        border-color: {PALETTE['accent']};
-        box-shadow: 0 6px 20px rgba(44, 95, 115, 0.3);
+        border-color: {PALETTE['primary_dark']};
+        box-shadow: 0 6px 20px rgba(39, 65, 74, 0.2);
     }}
     
     /* Image preview permanent */
@@ -1380,3 +1379,4 @@ st.markdown(f"""
     <p style="font-size: 0.8rem; margin-top: 0.5rem; opacity: 0.8;">Design optimisé pour la lisibilité • Interface S2M</p>
 </div>
 """, unsafe_allow_html=True)
+
