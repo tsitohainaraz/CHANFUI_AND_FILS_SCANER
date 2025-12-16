@@ -24,261 +24,403 @@ st.set_page_config(
 )
 
 # ============================================================
-# THÈME CHAN FOUI & FILS
+# THÈME CHAN FOUI & FILS PREMIUM
 # ============================================================
 LOGO_FILENAME = "CF_LOGOS.png"
 BRAND_TITLE = "Chan Foui et Fils"
 BRAND_SUB = "Google Vision AI — Scanner Intelligent"
 
-# Palette de couleurs Chan Foui
+# Palette de couleurs Premium Technologique
 PALETTE = {
-    "petrol": "#0F3A45",
-    "gold": "#D4AF37",
-    "ivory": "#FAF5EA",
-    "muted": "#7a8a8f",
-    "card": "#ffffff",
-    "soft": "#f6f2ec"
+    "tech_blue": "#1E40AF",      # Bleu technologie
+    "tech_red": "#DC2626",       # Rouge premium
+    "tech_gray": "#1F2937",      # Gris foncé
+    "tech_light": "#F3F4F6",     # Gris clair
+    "tech_accent": "#3B82F6",    # Bleu accent
+    "tech_gold": "#D97706",      # Or technologique
+    "card_bg": "#FFFFFF",        # Blanc pur
+    "gradient_start": "#0F172A", # Début gradient
+    "gradient_end": "#1E3A8A"    # Fin gradient
 }
 
-# CSS personnalisé amélioré
+# CSS personnalisé PREMIUM
 st.markdown(f"""
 <style>
-    /* Design général */
+    /* Design général - Technologique Premium */
     .main {{
-        background: linear-gradient(135deg, {PALETTE['ivory']} 0%, #fffdf9 100%);
+        background: linear-gradient(135deg, {PALETTE['tech_light']} 0%, #ffffff 100%);
     }}
     
     .stApp {{
-        background: {PALETTE['ivory']};
-        font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+        background: linear-gradient(135deg, #0F172A 0%, {PALETTE['gradient_end']} 100%);
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     }}
     
-    /* Header avec logo */
+    /* Header premium avec encadrement rouge */
     .header-container {{
-        background: linear-gradient(135deg, {PALETTE['petrol']} 0%, #0c2d35 100%);
-        padding: 1.5rem;
-        border-radius: 20px;
-        margin-bottom: 1.5rem;
-        box-shadow: 0 10px 30px rgba(15, 58, 69, 0.1);
-        color: white;
+        background: linear-gradient(135deg, {PALETTE['gradient_start']} 0%, {PALETTE['gradient_end']} 100%);
+        padding: 2rem;
+        border-radius: 24px;
+        margin-bottom: 2rem;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
         text-align: center;
+        border: 4px solid {PALETTE['tech_red']};
+        position: relative;
+        overflow: hidden;
     }}
     
-    .logo-header {{
+    .header-container::before {{
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, {PALETTE['tech_red']}, {PALETTE['tech_gold']}, {PALETTE['tech_accent']});
+        animation: shimmer 3s infinite;
+    }}
+    
+    @keyframes shimmer {{
+        0% {{ background-position: -200% center; }}
+        100% {{ background-position: 200% center; }}
+    }}
+    
+    .logo-title-wrapper {{
         display: flex;
+        flex-direction: column;
         align-items: center;
         justify-content: center;
-        gap: 20px;
-        margin-bottom: 10px;
+        gap: 1rem;
+        margin-bottom: 1rem;
     }}
     
     .logo-img {{
-        height: 70px;
+        height: 120px;
         width: auto;
-        filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1));
+        filter: drop-shadow(0 8px 16px rgba(0,0,0,0.3));
+        border-radius: 16px;
+        padding: 10px;
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(10px);
     }}
     
     .brand-title {{
-        color: {PALETTE['gold']};
-        font-size: 2.2rem;
-        font-weight: 700;
+        color: white;
+        font-size: 3rem;
+        font-weight: 900;
         margin: 0;
-        text-shadow: 1px 1px 3px rgba(0,0,0,0.2);
+        text-shadow: 2px 2px 8px rgba(0,0,0,0.4);
+        letter-spacing: -0.5px;
+        border: 3px solid {PALETTE['tech_red']};
+        border-radius: 16px;
+        padding: 1.5rem 2.5rem;
+        background: linear-gradient(135deg, rgba(220, 38, 38, 0.15), rgba(220, 38, 38, 0.05));
+        display: inline-block;
+        position: relative;
+        overflow: hidden;
+    }}
+    
+    .brand-title::after {{
+        content: '';
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: linear-gradient(
+            45deg,
+            transparent 30%,
+            rgba(255, 255, 255, 0.1) 50%,
+            transparent 70%
+        );
+        transform: rotate(45deg);
+        animation: shine 3s infinite;
+    }}
+    
+    @keyframes shine {{
+        0% {{ transform: translateX(-100%) translateY(-100%) rotate(45deg); }}
+        100% {{ transform: translateX(100%) translateY(100%) rotate(45deg); }}
     }}
     
     .brand-sub {{
-        color: {PALETTE['ivory']};
-        opacity: 0.9;
-        font-size: 1rem;
-        margin-top: 5px;
+        color: rgba(255, 255, 255, 0.85);
+        font-size: 1.2rem;
+        margin-top: 0.5rem;
+        font-weight: 300;
+        letter-spacing: 1px;
     }}
     
     /* Sous-titre document */
     .document-title {{
-        background: linear-gradient(135deg, {PALETTE['gold']} 0%, #b58f2d 100%);
-        color: {PALETTE['petrol']};
-        padding: 0.8rem 1.5rem;
-        border-radius: 12px;
-        font-weight: 700;
-        font-size: 1.3rem;
-        text-align: center;
-        margin: 1rem 0;
-        box-shadow: 0 4px 12px rgba(212, 175, 55, 0.2);
-    }}
-    
-    /* Cartes */
-    .card {{
-        background: {PALETTE['card']};
-        padding: 1.5rem;
+        background: linear-gradient(135deg, {PALETTE['tech_blue']} 0%, #1D4ED8 100%);
+        color: white;
+        padding: 1.2rem 2rem;
         border-radius: 16px;
-        box-shadow: 0 8px 25px rgba(15, 58, 69, 0.08);
-        margin-bottom: 1.2rem;
-        border: 1px solid rgba(15, 58, 69, 0.05);
-        transition: all 0.3s ease;
-    }}
-    
-    .card:hover {{
-        transform: translateY(-3px);
-        box-shadow: 0 12px 30px rgba(15, 58, 69, 0.12);
-    }}
-    
-    /* Boutons */
-    .stButton > button {{
-        background: linear-gradient(135deg, {PALETTE['gold']} 0%, #b58f2d 100%);
-        color: {PALETTE['petrol']};
         font-weight: 700;
-        border: none;
-        padding: 0.8rem 1.5rem;
-        border-radius: 12px;
+        font-size: 1.4rem;
+        text-align: center;
+        margin: 1.5rem 0;
+        box-shadow: 0 8px 32px rgba(59, 130, 246, 0.3);
+        border: 2px solid rgba(255, 255, 255, 0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+    }}
+    
+    /* Boutons avec encadrement bleu */
+    .stButton > button {{
+        background: linear-gradient(135deg, {PALETTE['tech_blue']} 0%, #2563EB 100%);
+        color: white !important;
+        font-weight: 700;
+        border: 3px solid {PALETTE['tech_accent']} !important;
+        padding: 1rem 2rem;
+        border-radius: 16px;
         transition: all 0.3s ease;
         width: 100%;
-        box-shadow: 0 4px 12px rgba(212, 175, 55, 0.2);
+        box-shadow: 0 8px 24px rgba(37, 99, 235, 0.25);
+        font-size: 1.1rem;
+        letter-spacing: 0.5px;
+        min-height: 70px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        overflow: hidden;
     }}
     
     .stButton > button:hover {{
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(212, 175, 55, 0.3);
-        color: {PALETTE['petrol']} !important;
+        transform: translateY(-3px);
+        box-shadow: 0 12px 32px rgba(37, 99, 235, 0.4);
+        border-color: {PALETTE['tech_gold']} !important;
     }}
     
+    .stButton > button::before {{
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(
+            90deg,
+            transparent,
+            rgba(255, 255, 255, 0.2),
+            transparent
+        );
+        transition: left 0.5s;
+    }}
+    
+    .stButton > button:hover::before {{
+        left: 100%;
+    }}
+    
+    /* Boutons secondaires */
     .secondary-btn {{
-        background: linear-gradient(135deg, {PALETTE['muted']} 0%, #5a6c74 100%) !important;
-        color: white !important;
+        background: linear-gradient(135deg, {PALETTE['tech_gray']} 0%, #374151 100%) !important;
+        border-color: #6B7280 !important;
     }}
     
     .danger-btn {{
-        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
-        color: white !important;
+        background: linear-gradient(135deg, #DC2626 0%, #B91C1C 100%) !important;
+        border-color: #EF4444 !important;
+    }}
+    
+    /* Cartes premium */
+    .card {{
+        background: {PALETTE['card_bg']};
+        padding: 2rem;
+        border-radius: 24px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.1);
+        margin-bottom: 1.5rem;
+        border: 1px solid rgba(209, 213, 219, 0.3);
+        transition: all 0.3s ease;
+        backdrop-filter: blur(10px);
+    }}
+    
+    .card:hover {{
+        transform: translateY(-5px);
+        box-shadow: 0 25px 80px rgba(0, 0, 0, 0.15);
     }}
     
     /* Zone de dépôt */
     .upload-box {{
-        border: 3px dashed {PALETTE['gold']};
-        border-radius: 20px;
-        padding: 2.5rem;
+        border: 3px dashed {PALETTE['tech_blue']};
+        border-radius: 24px;
+        padding: 3rem;
         text-align: center;
-        background: rgba(212, 175, 55, 0.05);
-        margin: 1.5rem 0;
+        background: rgba(37, 99, 235, 0.05);
+        margin: 2rem 0;
         transition: all 0.3s ease;
+        backdrop-filter: blur(5px);
     }}
     
     .upload-box:hover {{
-        background: rgba(212, 175, 55, 0.1);
-        border-color: {PALETTE['petrol']};
+        background: rgba(37, 99, 235, 0.1);
+        border-color: {PALETTE['tech_accent']};
+        transform: scale(1.01);
     }}
     
     /* Barre de progression */
     .progress-container {{
-        background: {PALETTE['petrol']};
+        background: linear-gradient(135deg, {PALETTE['tech_gray']} 0%, #111827 100%);
         color: white;
-        padding: 2rem;
-        border-radius: 16px;
+        padding: 3rem;
+        border-radius: 24px;
         text-align: center;
-        margin: 2rem 0;
-        box-shadow: 0 8px 25px rgba(15, 58, 69, 0.15);
-    }}
-    
-    .progress-icon {{
-        font-size: 3rem;
-        margin-bottom: 1rem;
-        animation: pulse 1.5s infinite;
-    }}
-    
-    @keyframes pulse {{
-        0% {{ transform: scale(1); opacity: 1; }}
-        50% {{ transform: scale(1.1); opacity: 0.8; }}
-        100% {{ transform: scale(1); opacity: 1; }}
-    }}
-    
-    /* Réponses */
-    .info-box {{
-        background: linear-gradient(135deg, #e8f4f8 0%, #d4eaf0 100%);
-        border-left: 4px solid {PALETTE['petrol']};
-        padding: 1rem;
-        border-radius: 8px;
-        margin: 0.5rem 0;
-    }}
-    
-    .success-box {{
-        background: linear-gradient(135deg, #d4f7e7 0%, #b8f0d4 100%);
-        border-left: 4px solid #10b981;
-        padding: 1rem;
-        border-radius: 8px;
-        margin: 0.5rem 0;
-    }}
-    
-    .warning-box {{
-        background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
-        border-left: 4px solid #f59e0b;
-        padding: 1rem;
-        border-radius: 8px;
-        margin: 0.5rem 0;
+        margin: 2.5rem 0;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        border: 2px solid rgba(255, 255, 255, 0.1);
     }}
     
     /* Sélecteur de document */
     .doc-selector {{
-        display: flex;
-        gap: 1rem;
-        flex-wrap: wrap;
-        justify-content: center;
-        margin: 1.5rem 0;
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1.5rem;
+        margin: 2rem 0;
     }}
     
     .doc-option {{
-        flex: 1;
-        min-width: 160px;
-        text-align: center;
-        background: {PALETTE['card']};
-        padding: 1rem;
-        border-radius: 12px;
-        border: 2px solid transparent;
+        background: linear-gradient(135deg, {PALETTE['tech_blue']} 0%, #2563EB 100%);
+        color: white;
+        padding: 2rem 1.5rem;
+        border-radius: 20px;
+        border: 3px solid {PALETTE['tech_accent']};
         transition: all 0.3s ease;
         cursor: pointer;
-        box-shadow: 0 4px 10px rgba(15, 58, 69, 0.05);
+        text-align: center;
+        box-shadow: 0 10px 30px rgba(37, 99, 235, 0.2);
+        min-height: 140px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
     }}
     
     .doc-option:hover {{
-        transform: translateY(-3px);
-        box-shadow: 0 8px 20px rgba(15, 58, 69, 0.1);
-        border-color: {PALETTE['gold']};
+        transform: translateY(-5px);
+        box-shadow: 0 15px 40px rgba(37, 99, 235, 0.3);
+        border-color: {PALETTE['tech_gold']};
     }}
     
     .doc-option.selected {{
-        background: rgba(212, 175, 55, 0.1);
-        border-color: {PALETTE['gold']};
-        box-shadow: 0 6px 15px rgba(212, 175, 55, 0.15);
+        background: linear-gradient(135deg, {PALETTE['tech_gold']} 0%, #B45309 100%);
+        border-color: #F59E0B;
+        box-shadow: 0 15px 40px rgba(217, 119, 6, 0.3);
     }}
     
-    /* Responsive */
+    /* Image preview permanent */
+    .image-preview-container {{
+        position: sticky;
+        top: 20px;
+        background: {PALETTE['card_bg']};
+        border-radius: 20px;
+        padding: 1.5rem;
+        box-shadow: 0 15px 50px rgba(0, 0, 0, 0.15);
+        margin-bottom: 2rem;
+        border: 2px solid rgba(37, 99, 235, 0.1);
+    }}
+    
+    /* Responsive Design */
     @media (max-width: 768px) {{
+        .header-container {{
+            padding: 1.5rem;
+            margin: 0.5rem;
+        }}
+        
         .brand-title {{
-            font-size: 1.8rem;
+            font-size: 2rem;
+            padding: 1rem 1.5rem;
+        }}
+        
+        .logo-img {{
+            height: 80px;
+        }}
+        
+        .brand-sub {{
+            font-size: 1rem;
         }}
         
         .document-title {{
             font-size: 1.1rem;
-            padding: 0.7rem 1rem;
+            padding: 1rem;
+            margin: 1rem 0.5rem;
         }}
         
         .doc-option {{
-            min-width: 100%;
-        }}
-        
-        .upload-box {{
-            padding: 1.5rem;
+            min-height: 120px;
+            padding: 1.5rem 1rem;
         }}
         
         .card {{
-            padding: 1.2rem;
+            padding: 1.5rem;
+            margin: 0.5rem;
+            border-radius: 20px;
         }}
         
-        .header-container {{
+        .upload-box {{
+            padding: 2rem;
+            margin: 1rem;
+        }}
+        
+        .stButton > button {{
+            min-height: 60px;
+            padding: 0.8rem 1.5rem;
+            font-size: 1rem;
+        }}
+        
+        .image-preview-container {{
+            margin: 1rem 0.5rem;
             padding: 1rem;
+        }}
+    }}
+    
+    @media (max-width: 480px) {{
+        .brand-title {{
+            font-size: 1.5rem;
+            padding: 0.8rem 1.2rem;
         }}
         
         .logo-img {{
             height: 60px;
         }}
+        
+        .doc-selector {{
+            grid-template-columns: 1fr;
+        }}
+        
+        .doc-option {{
+            min-height: 100px;
+        }}
+    }}
+    
+    /* Alertes et messages */
+    .duplicate-alert {{
+        background: linear-gradient(135deg, #FEF3C7 0%, #FDE68A 100%);
+        border: 3px solid #F59E0B;
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin: 1.5rem 0;
+        box-shadow: 0 10px 30px rgba(245, 158, 11, 0.2);
+    }}
+    
+    .success-alert {{
+        background: linear-gradient(135deg, #D1FAE5 0%, #A7F3D0 100%);
+        border: 3px solid #10B981;
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin: 1.5rem 0;
+        box-shadow: 0 10px 30px rgba(16, 185, 129, 0.2);
+    }}
+    
+    .info-alert {{
+        background: linear-gradient(135deg, #DBEAFE 0%, #BFDBFE 100%);
+        border: 3px solid {PALETTE['tech_blue']};
+        border-radius: 16px;
+        padding: 1.5rem;
+        margin: 1.5rem 0;
+        box-shadow: 0 10px 30px rgba(37, 99, 235, 0.2);
     }}
 </style>
 """, unsafe_allow_html=True)
@@ -286,10 +428,8 @@ st.markdown(f"""
 # ============================================================
 # GOOGLE SHEETS CONFIGURATION
 # ============================================================
-# Lien vers votre sheet : https://docs.google.com/spreadsheets/d/1FooEwQBwLjvyjAsvHu4eDes0o-eEm92fbEWv6maBNyE
 SHEET_ID = "1FooEwQBwLjvyjAsvHu4eDes0o-eEm92fbEWv6maBNyE"
 
-# Les GIDs sont corrects selon votre lien
 SHEET_GIDS = {
     "FACTURE EN COMPTE": 16102465,  # Onglet FACT
     "BDC LEADERPRICE": 954728911,    # Onglet BDC
@@ -298,7 +438,7 @@ SHEET_GIDS = {
 }
 
 # ============================================================
-# FONCTIONS UTILITAIRES
+# FONCTIONS UTILITAIRES (inchangées)
 # ============================================================
 def preprocess_image(b: bytes, radius=1.2, percent=180) -> bytes:
     img = Image.open(BytesIO(b)).convert("RGB")
@@ -322,9 +462,7 @@ def clean_text(text: str) -> str:
     return text.strip()
 
 def format_date_french(date_str: str) -> str:
-    """Convertit une date en format AAAA-MM-JJ"""
     try:
-        # Essayer différents formats de date
         formats = [
             "%d/%m/%Y", "%d-%m-%Y", "%d %m %Y",
             "%d/%m/%y", "%d-%m-%y", "%d %m %y",
@@ -338,7 +476,6 @@ def format_date_french(date_str: str) -> str:
             except:
                 continue
         
-        # Si aucun format ne fonctionne, essayer avec dateutil
         try:
             date_obj = parser.parse(date_str, dayfirst=True)
             return date_obj.strftime("%Y-%m-%d")
@@ -348,7 +485,6 @@ def format_date_french(date_str: str) -> str:
         return datetime.now().strftime("%Y-%m-%d")
 
 def get_month_from_date(date_str: str) -> str:
-    """Extrait le mois d'une date"""
     months_fr = {
         1: "janvier", 2: "février", 3: "mars", 4: "avril",
         5: "mai", 6: "juin", 7: "juillet", 8: "août",
@@ -359,19 +495,15 @@ def get_month_from_date(date_str: str) -> str:
         date_obj = parser.parse(date_str, dayfirst=True)
         return months_fr[date_obj.month]
     except:
-        # Si on ne peut pas parser, retourner le mois actuel
         return months_fr[datetime.now().month]
 
 def format_quantity(qty: Any) -> str:
-    """Formate la quantité en remplaçant . par ,"""
     if qty is None:
         return "0"
     
     qty_str = str(qty)
-    # Remplacer . par , pour les décimales
     qty_str = qty_str.replace(".", ",")
     
-    # Si c'est un nombre décimal avec des zeros, nettoyer
     if "," in qty_str:
         parts = qty_str.split(",")
         if len(parts) == 2 and parts[1] == "000":
@@ -380,7 +512,6 @@ def format_quantity(qty: Any) -> str:
     return qty_str
 
 def map_client(client: str) -> str:
-    """Map le client selon les règles"""
     client_upper = client.upper()
     
     if "ULYS" in client_upper:
@@ -393,7 +524,7 @@ def map_client(client: str) -> str:
         return client
 
 # ============================================================
-# FONCTIONS D'EXTRACTION
+# FONCTIONS D'EXTRACTION (inchangées)
 # ============================================================
 def extract_facture(text: str):
     lines = [l.strip() for l in text.split("\n") if l.strip()]
@@ -407,13 +538,11 @@ def extract_facture(text: str):
         "articles": []
     }
     
-    # Date et mois
     m = re.search(r"le\s+(\d{1,2}\s+\w+\s+\d{4})", text, re.IGNORECASE)
     if m:
         date_text = m.group(1)
         result["date"] = date_text
         
-        # Extraire le mois du texte de date
         months_fr = {
             "janvier": "janvier", "février": "février", "fevrier": "février",
             "mars": "mars", "avril": "avril", "mai": "mai",
@@ -426,22 +555,18 @@ def extract_facture(text: str):
                 result["mois"] = month_norm
                 break
     
-    # Numéro de facture
     m = re.search(r"FACTURE EN COMPTE\s+N[°o]?\s*(\d+)", text, re.IGNORECASE)
     if m:
         result["facture_numero"] = m.group(1)
     
-    # DOIT
     m = re.search(r"DOIT\s*:\s*(S2M|ULYS|DLP)", text, re.IGNORECASE)
     if m:
         result["doit"] = m.group(1)
     
-    # Adresse
     m = re.search(r"Adresse de livraison\s*:\s*(.+)", text, re.IGNORECASE)
     if m:
         result["adresse_livraison"] = m.group(1).strip()
     
-    # Bon de commande
     patterns = [
         r"Suivant votre bon de commande\s*[:\-]?\s*([0-9A-Za-z\-\/]+)",
         r"bon de commande\s*[:\-]?\s*(.+)"
@@ -452,7 +577,6 @@ def extract_facture(text: str):
             result["bon_commande"] = m.group(1).strip().split()[0]
             break
     
-    # Tableau des articles
     in_table = False
     designation_queue = []
     
@@ -501,12 +625,10 @@ def extract_leaderprice(text: str):
         "articles": []
     }
     
-    # Numéro BDC
     m = re.search(r"BCD\d+", text)
     if m:
         result["numero"] = m.group(0)
     
-    # Date
     m = re.search(r"Date\s*(\d{2}/\d{2}/\d{2,4})", text)
     if m:
         date_str = re.sub(r"\s+", "", m.group(1))
@@ -517,7 +639,6 @@ def extract_leaderprice(text: str):
             year = parts[2] if len(parts[2]) == 4 else "20" + parts[2]
             result["date"] = f"{day}/{mon}/{year}"
     
-    # Tableau des articles
     in_table = False
     designation_queue = []
     
@@ -594,23 +715,19 @@ def extract_bdc_supermaki(text: str):
         "articles": []
     }
     
-    # Numéro BDC
     m = re.search(r"Bon de commande n[°o]\s*(\d{8})", text)
     if m:
         result["numero"] = m.group(1)
     
-    # Date
     m = re.search(r"Date\s+[ée]mission\s*(\d{2}/\d{2}/\d{4})", text)
     if m:
         result["date"] = m.group(1)
     
-    # Adresse livraison
     for i, l in enumerate(lines):
         if "Adresse de livraison" in l and i + 1 < len(lines):
             result["adresse_livraison"] = lines[i + 1]
             break
     
-    # Extraction par blocs
     i = 0
     while i < len(lines):
         if re.fullmatch(r"\d{6}", lines[i]):
@@ -647,17 +764,14 @@ def extract_bdc_ulys(text: str):
         "articles": []
     }
     
-    # Numéro BDC
     m = re.search(r"N[°o]\s*(\d{8,})", text)
     if m:
         result["numero"] = m.group(1)
     
-    # Date
     m = re.search(r"Date de la Commande\s*:?[\s\-]*(\d{2}/\d{2}/\d{4})", text)
     if m:
         result["date"] = m.group(1)
     
-    # Extraction
     in_table = False
     current_designation = ""
     waiting_qty = False
@@ -717,90 +831,145 @@ EXTRACTION_FUNCTIONS = {
 }
 
 # ============================================================
-# GOOGLE SHEETS FUNCTIONS - POUR TABLEAUX STRUCTURÉS
+# NOUVELLE FONCTION : DÉTECTION DE DOUBLONS
+# ============================================================
+def check_duplicates_in_sheet(document_type: str, data: dict) -> Tuple[bool, List[Dict], List[str]]:
+    """Vérifie si les données existent déjà dans Google Sheets"""
+    try:
+        if "gcp_sheet" not in st.secrets:
+            return False, [], ["Credentials manquants"]
+        
+        sa_info = dict(st.secrets["gcp_sheet"])
+        gc = gspread.service_account_from_dict(sa_info)
+        sh = gc.open_by_key(SHEET_ID)
+        
+        target_gid = SHEET_GIDS.get(document_type)
+        worksheet = None
+        
+        for ws in sh.worksheets():
+            if int(ws.id) == target_gid:
+                worksheet = ws
+                break
+        
+        if not worksheet:
+            return False, [], ["Feuille non trouvée"]
+        
+        existing_data = worksheet.get_all_values()
+        if len(existing_data) <= 1:
+            return False, [], []
+        
+        duplicates = []
+        duplicate_messages = []
+        
+        headers = existing_data[0]
+        
+        if document_type == "FACTURE EN COMPTE":
+            # Recherche par Numéro de Facture et Client
+            nf_to_find = data.get("facture_numero", "")
+            client_to_find = data.get("doit", "")
+            
+            if not nf_to_find:
+                return False, [], ["Numéro de facture manquant"]
+            
+            for idx, row in enumerate(existing_data[1:], start=2):
+                if len(row) >= 5:
+                    existing_nf = row[4] if len(row) > 4 else ""
+                    existing_client = row[1] if len(row) > 1 else ""
+                    
+                    if existing_nf == nf_to_find and existing_client == client_to_find:
+                        duplicate_info = {
+                            "row": idx,
+                            "data": row,
+                            "reason": f"Facture {nf_to_find} existe déjà pour {client_to_find}"
+                        }
+                        duplicates.append(duplicate_info)
+                        duplicate_messages.append(f"📌 Ligne {idx}: Facture {nf_to_find} pour {client_to_find}")
+        
+        else:  # BDC
+            # Recherche par Numéro BDC et Client
+            nbc_to_find = data.get("numero", "")
+            client_to_find = map_client(data.get("client", ""))
+            
+            if not nbc_to_find:
+                return False, [], ["Numéro BDC manquant"]
+            
+            for idx, row in enumerate(existing_data[1:], start=2):
+                if len(row) >= 4:
+                    existing_nbc = row[3] if len(row) > 3 else ""
+                    existing_client = row[1] if len(row) > 1 else ""
+                    
+                    if existing_nbc == nbc_to_find and existing_client == client_to_find:
+                        duplicate_info = {
+                            "row": idx,
+                            "data": row,
+                            "reason": f"BDC {nbc_to_find} existe déjà pour {client_to_find}"
+                        }
+                        duplicates.append(duplicate_info)
+                        duplicate_messages.append(f"📌 Ligne {idx}: BDC {nbc_to_find} pour {client_to_find}")
+        
+        has_duplicates = len(duplicates) > 0
+        return has_duplicates, duplicates, duplicate_messages
+        
+    except Exception as e:
+        return False, [], [f"Erreur lors de la vérification: {str(e)}"]
+
+# ============================================================
+# GOOGLE SHEETS FUNCTIONS - AVEC GESTION DES DOUBLONS
 # ============================================================
 def get_worksheet(document_type: str):
-    """Récupère la feuille Google correspondante"""
     try:
-        # Vérifier si les credentials sont présents
         if "gcp_sheet" not in st.secrets:
             st.error("❌ Les credentials Google Sheets ne sont pas configurés dans st.secrets")
             return None
         
-        # Créer le client gspread
         sa_info = dict(st.secrets["gcp_sheet"])
         gc = gspread.service_account_from_dict(sa_info)
-        
-        # Ouvrir la feuille
         sh = gc.open_by_key(SHEET_ID)
         
-        # Obtenir le GID
         target_gid = SHEET_GIDS.get(document_type)
         
-        # Chercher la feuille par GID
         for worksheet in sh.worksheets():
             if int(worksheet.id) == target_gid:
                 return worksheet
         
-        # Si la feuille n'est pas trouvée
         st.error(f"❌ La feuille avec GID {target_gid} n'a pas été trouvée")
-        st.info("ℹ️ Vérifiez que vous avez bien créé un tableau dans cet onglet")
         return None
         
-    except gspread.exceptions.APIError as e:
-        st.error(f"❌ Erreur API Google Sheets: {str(e)}")
-        return None
     except Exception as e:
         st.error(f"❌ Erreur lors de la connexion à Google Sheets: {str(e)}")
         return None
 
 def find_table_range(worksheet):
-    """Trouve la plage du tableau dans la feuille"""
     try:
-        # Récupérer toutes les données
         all_data = worksheet.get_all_values()
         
         if not all_data:
-            return "A1:I1"  # Retourne juste l'en-tête si vide
+            return "A1:I1"
         
-        # Chercher les en-têtes typiques
         headers = ["Mois", "Client", "date", "NBC", "NF", "lien", "Magasin", "Produit", "Quantite"]
-        
-        # Vérifier la première ligne pour les en-têtes
         first_row = all_data[0] if all_data else []
-        
-        # Si la première ligne contient les en-têtes, c'est bon
         header_found = any(header in str(first_row) for header in headers)
         
         if header_found:
-            # Trouver la dernière ligne avec des données
             last_row = len(all_data) + 1
-            
-            # Si la feuille est presque vide, commencer à la ligne 2
             if len(all_data) <= 1:
                 return "A2:I2"
             else:
                 return f"A{last_row}:I{last_row}"
         else:
-            # Si pas d'en-têtes, on va ajouter à la première ligne vide
             for i, row in enumerate(all_data, start=1):
                 if not any(cell.strip() for cell in row):
                     return f"A{i}:I{i}"
-            
-            # Si toutes les lignes ont des données, ajouter à la fin
             return f"A{len(all_data)+1}:I{len(all_data)+1}"
             
     except Exception as e:
-        st.error(f"❌ Erreur lors de la recherche de la plage: {str(e)}")
-        return "A2:I2"  # Par défaut
+        return "A2:I2"
 
 def prepare_rows_for_sheet(document_type: str, data: dict, edited_df: pd.DataFrame) -> List[List[str]]:
-    """Prépare les lignes pour l'insertion dans Google Sheets"""
     rows = []
     
     try:
         if document_type == "FACTURE EN COMPTE":
-            # Format FACT: Mois|Client|date|NBC|NF|lien|Magasin|Produit|Quantite|
             mois = data.get("mois", "")
             client = data.get("doit", "")
             date = format_date_french(data.get("date", ""))
@@ -813,19 +982,18 @@ def prepare_rows_for_sheet(document_type: str, data: dict, edited_df: pd.DataFra
                 quantite = format_quantity(row.get("bouteilles", ""))
                 
                 rows.append([
-                    mois,           # Mois
-                    client,         # Client (DOIT)
-                    date,           # Date (AAAA-MM-JJ)
-                    nbc,            # NBC
-                    nf,             # NF
-                    "",             # Lien (vide)
-                    magasin,        # Magasin
-                    article,        # Produit
-                    quantite        # Quantité
+                    mois,
+                    client,
+                    date,
+                    nbc,
+                    nf,
+                    "",
+                    magasin,
+                    article,
+                    quantite
                 ])
         
-        else:  # BDC (LEADERPRICE, SUPERMAKI, ULYS)
-            # Format BDC: Mois|Client|Date émission|NBC|lien|Magasin|Produit|Quantite|
+        else:
             date_emission = data.get("date", "")
             mois = get_month_from_date(date_emission)
             client = map_client(data.get("client", ""))
@@ -838,14 +1006,14 @@ def prepare_rows_for_sheet(document_type: str, data: dict, edited_df: pd.DataFra
                 quantite = format_quantity(row.get("Qté", ""))
                 
                 rows.append([
-                    mois,           # Mois
-                    client,         # Client (mappé)
-                    date,           # Date émission (AAAA-MM-JJ)
-                    nbc,            # NBC
-                    "",             # Lien (vide)
-                    magasin,        # Magasin
-                    article,        # Produit
-                    quantite        # Quantité
+                    mois,
+                    client,
+                    date,
+                    nbc,
+                    "",
+                    magasin,
+                    article,
+                    quantite
                 ])
         
         return rows
@@ -854,84 +1022,56 @@ def prepare_rows_for_sheet(document_type: str, data: dict, edited_df: pd.DataFra
         st.error(f"❌ Erreur lors de la préparation des données: {str(e)}")
         return []
 
-def save_to_google_sheets_with_table(document_type: str, data: dict, edited_df: pd.DataFrame):
-    """Sauvegarde dans Google Sheets avec gestion des tableaux"""
+def save_to_google_sheets_with_duplicate_check(document_type: str, data: dict, edited_df: pd.DataFrame, overwrite_duplicates: bool = False):
+    """Sauvegarde dans Google Sheets avec gestion des doublons"""
     try:
+        # Vérifier les doublons
+        has_duplicates, duplicates, duplicate_messages = check_duplicates_in_sheet(document_type, data)
+        
+        if has_duplicates and not overwrite_duplicates:
+            return False, "Doublons détectés", duplicates, duplicate_messages
+        
         # Récupérer la feuille
         ws = get_worksheet(document_type)
-        
         if not ws:
-            st.error("❌ Impossible de se connecter à Google Sheets. Vérifiez les credentials.")
-            return False, "Erreur de connexion"
+            return False, "Connexion échouée", [], []
         
         # Préparer les nouvelles lignes
         new_rows = prepare_rows_for_sheet(document_type, data, edited_df)
-        
         if not new_rows:
-            st.warning("⚠️ Aucune donnée à enregistrer")
-            return False, "Aucune donnée"
+            return False, "Aucune donnée", [], []
         
-        # Afficher un aperçu des données
-        st.info("📋 **Aperçu des données à enregistrer:**")
+        # Si on doit écraser les doublons
+        if has_duplicates and overwrite_duplicates:
+            # Supprimer les lignes en doublon
+            rows_to_delete = sorted([dup["row"] for dup in duplicates], reverse=True)
+            for row_idx in rows_to_delete:
+                try:
+                    ws.delete_rows(row_idx)
+                except:
+                    pass
         
-        # Créer un DataFrame pour l'aperçu
-        if document_type == "FACTURE EN COMPTE":
-            columns = ["Mois", "Client", "Date", "NBC", "NF", "Lien", "Magasin", "Produit", "Quantité"]
-        else:
-            columns = ["Mois", "Client", "Date émission", "NBC", "Lien", "Magasin", "Produit", "Quantité"]
-        
-        preview_df = pd.DataFrame(new_rows, columns=columns)
-        st.dataframe(preview_df, use_container_width=True)
-        
-        # Trouver où ajouter les données (dans le tableau)
+        # Trouver où ajouter les données
         table_range = find_table_range(ws)
         
         # Ajouter les données
         try:
-            # Si c'est une nouvelle ligne simple
             if ":" in table_range and table_range.count(":") == 1:
-                # C'est une plage simple, utiliser append_rows
                 ws.append_rows(new_rows, table_range=table_range)
             else:
-                # Sinon, ajouter à la fin
                 ws.append_rows(new_rows)
             
-            st.success(f"✅ {len(new_rows)} ligne(s) enregistrée(s) avec succès dans Google Sheets!")
+            success_message = f"✅ {len(new_rows)} ligne(s) enregistrée(s) avec succès!"
+            if has_duplicates and overwrite_duplicates:
+                success_message += f" ({len(duplicates)} doublon(s) écrasé(s))"
             
-            # Afficher le lien vers le sheet
-            sheet_url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit#gid={SHEET_GIDS[document_type]}"
-            st.markdown(f'<div class="info-box">🔗 <a href="{sheet_url}" target="_blank">Ouvrir Google Sheets</a></div>', unsafe_allow_html=True)
-            
-            st.balloons()
-            return True, f"{len(new_rows)} lignes enregistrées"
+            return True, success_message, [], []
             
         except Exception as e:
-            st.error(f"❌ Erreur lors de l'enregistrement dans le tableau: {str(e)}")
-            
-            # Essayer une méthode alternative
-            try:
-                st.info("🔄 Tentative alternative d'enregistrement...")
-                
-                # Récupérer toutes les données
-                all_data = ws.get_all_values()
-                
-                # Ajouter les nouvelles lignes
-                for row in new_rows:
-                    all_data.append(row)
-                
-                # Mettre à jour toute la feuille
-                ws.update('A1', all_data)
-                
-                st.success(f"✅ {len(new_rows)} ligne(s) enregistrée(s) avec méthode alternative!")
-                return True, f"{len(new_rows)} lignes enregistrées (méthode alternative)"
-                
-            except Exception as e2:
-                st.error(f"❌ Échec de la méthode alternative: {str(e2)}")
-                return False, str(e)
+            return False, f"Erreur d'enregistrement: {str(e)}", [], []
                 
     except Exception as e:
-        st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
-        return False, str(e)
+        return False, f"Erreur générale: {str(e)}", [], []
 
 # ============================================================
 # SESSION STATE
@@ -940,53 +1080,80 @@ if "document_type" not in st.session_state:
     st.session_state.document_type = ""
 if "uploaded_file" not in st.session_state:
     st.session_state.uploaded_file = None
+if "uploaded_image" not in st.session_state:
+    st.session_state.uploaded_image = None
 if "ocr_result" not in st.session_state:
     st.session_state.ocr_result = None
 if "show_results" not in st.session_state:
     st.session_state.show_results = False
 if "processing" not in st.session_state:
     st.session_state.processing = False
+if "show_duplicate_dialog" not in st.session_state:
+    st.session_state.show_duplicate_dialog = False
+if "duplicate_data" not in st.session_state:
+    st.session_state.duplicate_data = None
 
 # ============================================================
-# HEADER AVEC LOGO
+# HEADER PREMIUM AVEC LOGO CENTRÉ
 # ============================================================
 st.markdown('<div class="header-container">', unsafe_allow_html=True)
 
-col_logo, col_title = st.columns([1, 3])
-with col_logo:
-    if os.path.exists(LOGO_FILENAME):
-        st.image(LOGO_FILENAME, width=100)
-    else:
-        st.markdown("🍷")
+st.markdown('<div class="logo-title-wrapper">', unsafe_allow_html=True)
 
-with col_title:
-    st.markdown(f'<h1 class="brand-title">{BRAND_TITLE}</h1>', unsafe_allow_html=True)
-    st.markdown(f'<p class="brand-sub">{BRAND_SUB}</p>', unsafe_allow_html=True)
+# Logo
+if os.path.exists(LOGO_FILENAME):
+    st.image(LOGO_FILENAME, width=150)
+else:
+    st.markdown("🍷")
+
+# Titre avec encadrement rouge
+st.markdown(f'<h1 class="brand-title">{BRAND_TITLE}</h1>', unsafe_allow_html=True)
 
 st.markdown('</div>', unsafe_allow_html=True)
+
+# Sous-titre
+st.markdown(f'<p class="brand-sub">{BRAND_SUB}</p>', unsafe_allow_html=True)
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# ============================================================
+# APERÇU D'IMAGE PERMANENT
+# ============================================================
+if st.session_state.uploaded_file is not None and st.session_state.uploaded_image is not None:
+    st.markdown('<div class="image-preview-container">', unsafe_allow_html=True)
+    st.markdown('<h4 style="color: var(--tech-blue); text-align: center;">👁️ Aperçu du document</h4>', unsafe_allow_html=True)
+    st.image(st.session_state.uploaded_image, use_column_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================================
 # SÉLECTION DU TYPE DE DOCUMENT
 # ============================================================
 if not st.session_state.document_type:
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<h3 style="text-align: center; color: var(--petrol);">📋 Sélectionnez le type de document</h3>', unsafe_allow_html=True)
+    st.markdown('<h3 style="text-align: center; color: var(--tech-blue);">📋 Sélectionnez le type de document</h3>', unsafe_allow_html=True)
     
-    # Options avec icônes
+    # Options avec design premium
     doc_types = [
-        {"name": "FACTURE EN COMPTE", "icon": "🧾", "color": PALETTE["gold"]},
-        {"name": "BDC LEADERPRICE", "icon": "🏪", "color": PALETTE["petrol"]},
-        {"name": "BDC SUPERMAKI", "icon": "🛒", "color": PALETTE["gold"]},
-        {"name": "BDC ULYS", "icon": "🏢", "color": PALETTE["petrol"]}
+        {"name": "FACTURE EN COMPTE", "icon": "🧾", "desc": "Facture client"},
+        {"name": "BDC LEADERPRICE", "icon": "🏪", "desc": "Bon de commande"},
+        {"name": "BDC SUPERMAKI", "icon": "🛒", "desc": "Bon de commande"},
+        {"name": "BDC ULYS", "icon": "🏢", "desc": "Bon de commande"}
     ]
+    
+    st.markdown('<div class="doc-selector">', unsafe_allow_html=True)
     
     cols = st.columns(len(doc_types))
     for idx, doc in enumerate(doc_types):
         with cols[idx]:
-            if st.button(f"{doc['icon']}\n\n{doc['name']}", use_container_width=True):
+            if st.button(
+                f"{doc['icon']}\n\n**{doc['name']}**\n\n_{doc['desc']}_",
+                use_container_width=True,
+                key=f"doc_{idx}"
+            ):
                 st.session_state.document_type = doc["name"]
                 st.rerun()
     
+    st.markdown('</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
@@ -1010,7 +1177,7 @@ st.markdown(f'''
 # ZONE DE TÉLÉCHARGEMENT
 # ============================================================
 st.markdown('<div class="card">', unsafe_allow_html=True)
-st.markdown('<h4 style="color: var(--petrol); text-align: center;">📤 Téléchargement du document</h4>', unsafe_allow_html=True)
+st.markdown('<h4 style="color: var(--tech-blue); text-align: center;">📤 Téléchargement du document</h4>', unsafe_allow_html=True)
 
 st.markdown('<div class="upload-box">', unsafe_allow_html=True)
 uploaded = st.file_uploader(
@@ -1028,27 +1195,20 @@ st.markdown('</div>', unsafe_allow_html=True)
 # ============================================================
 if uploaded and uploaded != st.session_state.uploaded_file:
     st.session_state.uploaded_file = uploaded
+    st.session_state.uploaded_image = Image.open(uploaded)
     st.session_state.ocr_result = None
     st.session_state.show_results = False
     st.session_state.processing = True
-    
-    # Affichage de l'aperçu
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<h4 style="color: var(--petrol);">👁️ Aperçu du document</h4>', unsafe_allow_html=True)
-    
-    image = Image.open(uploaded)
-    st.image(image, use_column_width=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.session_state.show_duplicate_dialog = False
     
     # Barre de progression avec animation
     progress_container = st.empty()
     with progress_container.container():
         st.markdown('<div class="progress-container">', unsafe_allow_html=True)
-        st.markdown('<div class="progress-icon">🔍</div>', unsafe_allow_html=True)
+        st.markdown('<div style="font-size: 3rem; margin-bottom: 1rem; animation: pulse 1.5s infinite;">🔍</div>', unsafe_allow_html=True)
         st.markdown('<h3 style="color: white;">Analyse en cours...</h3>', unsafe_allow_html=True)
         st.markdown('<p style="color: rgba(255,255,255,0.8);">Google Vision AI traite votre document</p>', unsafe_allow_html=True)
         
-        # Barre de progression animée
         progress_bar = st.progress(0)
         for percent_complete in range(0, 101, 10):
             time.sleep(0.1)
@@ -1058,9 +1218,8 @@ if uploaded and uploaded != st.session_state.uploaded_file:
     
     # Traitement OCR
     try:
-        # Conversion de l'image
         buf = BytesIO()
-        image.save(buf, format="JPEG")
+        st.session_state.uploaded_image.save(buf, format="JPEG")
         image_bytes = buf.getvalue()
         
         # Prétraitement spécifique
@@ -1071,17 +1230,14 @@ if uploaded and uploaded != st.session_state.uploaded_file:
         else:
             img_processed = preprocess_image(image_bytes, radius=1.2, percent=180)
         
-        # Vérification des credentials
         if "gcp_vision" not in st.secrets:
-            st.error("❌ Credentials Google Vision manquants dans les secrets")
+            st.error("❌ Credentials Google Vision manquants")
             st.stop()
         
-        # OCR
         creds = dict(st.secrets["gcp_vision"])
         raw_text = vision_ocr(img_processed, creds)
         raw_text = clean_text(raw_text)
         
-        # Extraction selon le type de document
         extract_func = EXTRACTION_FUNCTIONS[st.session_state.document_type]
         result = extract_func(raw_text)
         result["raw_text"] = raw_text
@@ -1090,9 +1246,7 @@ if uploaded and uploaded != st.session_state.uploaded_file:
         st.session_state.show_results = True
         st.session_state.processing = False
         
-        # Effacer la barre de progression
         progress_container.empty()
-        
         st.rerun()
         
     except Exception as e:
@@ -1107,7 +1261,7 @@ if st.session_state.show_results and st.session_state.ocr_result and not st.sess
     
     # Message de succès
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<div class="success-box">', unsafe_allow_html=True)
+    st.markdown('<div class="success-alert">', unsafe_allow_html=True)
     st.markdown(f'<h4 style="color: #059669;">✅ Analyse terminée avec succès !</h4>', unsafe_allow_html=True)
     st.markdown(f'<p>Document analysé : {st.session_state.document_type} à {datetime.now().strftime("%H:%M:%S")}</p>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
@@ -1115,7 +1269,7 @@ if st.session_state.show_results and st.session_state.ocr_result and not st.sess
     
     # Informations extraites
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<h4 style="color: var(--petrol);">📋 Informations extraites</h4>', unsafe_allow_html=True)
+    st.markdown('<h4 style="color: var(--tech-blue);">📋 Informations extraites</h4>', unsafe_allow_html=True)
     
     if st.session_state.document_type == "FACTURE EN COMPTE":
         col1, col2 = st.columns(2)
@@ -1128,7 +1282,6 @@ if st.session_state.show_results and st.session_state.ocr_result and not st.sess
             adresse = st.text_input("Adresse de livraison", value=result.get("adresse_livraison", ""), key="facture_adresse")
             facture = st.text_input("Numéro de facture", value=result.get("facture_numero", ""), key="facture_num")
         
-        # Stocker les données pour Google Sheets
         data_for_sheets = {
             "mois": mois,
             "doit": doit,
@@ -1138,7 +1291,7 @@ if st.session_state.show_results and st.session_state.ocr_result and not st.sess
             "adresse_livraison": adresse
         }
     
-    else:  # BDC
+    else:
         col1, col2 = st.columns(2)
         with col1:
             date_emission = st.text_input("Date émission", value=result.get("date", datetime.now().strftime("%d/%m/%Y")), key="bdc_date")
@@ -1152,7 +1305,6 @@ if st.session_state.show_results and st.session_state.ocr_result and not st.sess
             else:
                 adresse = st.text_input("Adresse livraison", value=result.get("adresse_livraison", "SCORE TALATAMATY"), key="bdc_adresse")
         
-        # Stocker les données pour Google Sheets
         data_for_sheets = {
             "client": client,
             "date": date_emission,
@@ -1164,7 +1316,7 @@ if st.session_state.show_results and st.session_state.ocr_result and not st.sess
     
     # Articles détectés
     st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<h4 style="color: var(--petrol);">🛒 Articles détectés</h4>', unsafe_allow_html=True)
+    st.markdown('<h4 style="color: var(--tech-blue);">🛒 Articles détectés</h4>', unsafe_allow_html=True)
     
     if st.session_state.document_type == "FACTURE EN COMPTE":
         articles = result.get("articles", [])
@@ -1231,29 +1383,98 @@ if st.session_state.show_results and st.session_state.ocr_result and not st.sess
         
         col_stat1, col_stat2 = st.columns(2)
         with col_stat1:
-            st.markdown(f'<div class="info-box"><strong>{total_items}</strong> articles détectés</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="info-alert"><strong>{total_items}</strong> articles détectés</div>', unsafe_allow_html=True)
         
         with col_stat2:
-            st.markdown(f'<div class="info-box"><strong>{total_qty}</strong> unités totales</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="info-alert"><strong>{total_qty}</strong> unités totales</div>', unsafe_allow_html=True)
     
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # Bouton d'export Google Sheets
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<h4 style="color: var(--petrol);">📤 Export vers Google Sheets</h4>', unsafe_allow_html=True)
+    # ============================================================
+    # GESTION DES DOUBLONS
+    # ============================================================
+    if st.session_state.show_duplicate_dialog and st.session_state.duplicate_data:
+        duplicates = st.session_state.duplicate_data.get("duplicates", [])
+        duplicate_messages = st.session_state.duplicate_data.get("messages", [])
+        
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown('<div class="duplicate-alert">', unsafe_allow_html=True)
+        st.markdown('<h4 style="color: #D97706;">⚠️ Doublons détectés !</h4>', unsafe_allow_html=True)
+        st.markdown('<p>Les données suivantes existent déjà dans Google Sheets :</p>', unsafe_allow_html=True)
+        
+        for msg in duplicate_messages:
+            st.markdown(f'<p>• {msg}</p>', unsafe_allow_html=True)
+        
+        st.markdown('<p><strong>Que souhaitez-vous faire ?</strong></p>', unsafe_allow_html=True)
+        
+        col_overwrite, col_cancel = st.columns(2)
+        
+        with col_overwrite:
+            if st.button("✅ Écraser les doublons", use_container_width=True):
+                success, message, _, _ = save_to_google_sheets_with_duplicate_check(
+                    st.session_state.document_type,
+                    data_for_sheets,
+                    edited_df,
+                    overwrite_duplicates=True
+                )
+                
+                if success:
+                    st.success(message)
+                    st.session_state.show_duplicate_dialog = False
+                    st.session_state.duplicate_data = None
+                    st.balloons()
+                else:
+                    st.error(message)
+        
+        with col_cancel:
+            if st.button("❌ Refuser l'insertion", use_container_width=True):
+                st.warning("❌ Insertion annulée. Les doublons n'ont pas été écrasés.")
+                st.session_state.show_duplicate_dialog = False
+                st.session_state.duplicate_data = None
+        
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
     
-    if st.button("💾 Enregistrer dans Google Sheets", use_container_width=True, key="save_to_sheets"):
-        try:
-            success, message = save_to_google_sheets_with_table(
+    else:
+        # Bouton d'export Google Sheets avec vérification de doublons
+        st.markdown('<div class="card">', unsafe_allow_html=True)
+        st.markdown('<h4 style="color: var(--tech-blue);">📤 Export vers Google Sheets</h4>', unsafe_allow_html=True)
+        
+        if st.button("💾 Enregistrer dans Google Sheets", use_container_width=True, key="save_to_sheets"):
+            # Vérifier d'abord les doublons
+            has_duplicates, duplicates, duplicate_messages = check_duplicates_in_sheet(
                 st.session_state.document_type,
-                data_for_sheets,
-                edited_df
+                data_for_sheets
             )
             
-        except Exception as e:
-            st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
-    
-    st.markdown('</div>', unsafe_allow_html=True)
+            if has_duplicates:
+                st.session_state.show_duplicate_dialog = True
+                st.session_state.duplicate_data = {
+                    "duplicates": duplicates,
+                    "messages": duplicate_messages
+                }
+                st.rerun()
+            else:
+                # Pas de doublons, procéder à l'enregistrement
+                success, message, _, _ = save_to_google_sheets_with_duplicate_check(
+                    st.session_state.document_type,
+                    data_for_sheets,
+                    edited_df,
+                    overwrite_duplicates=False
+                )
+                
+                if success:
+                    st.success(message)
+                    
+                    # Afficher le lien vers le sheet
+                    sheet_url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit#gid={SHEET_GIDS[st.session_state.document_type]}"
+                    st.markdown(f'<div class="info-alert">🔗 <a href="{sheet_url}" target="_blank">Ouvrir Google Sheets</a></div>', unsafe_allow_html=True)
+                    
+                    st.balloons()
+                else:
+                    st.error(f"❌ Erreur: {message}")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
     
     # OCR brut (optionnel)
     st.markdown('<div class="card">', unsafe_allow_html=True)
@@ -1268,18 +1489,22 @@ st.markdown("---")
 col_nav1, col_nav2 = st.columns([1, 1])
 
 with col_nav1:
-    if st.button("⬅️ Changer de type", use_container_width=True):
+    if st.button("⬅️ Changer de type", use_container_width=True, type="secondary"):
         st.session_state.document_type = ""
         st.session_state.uploaded_file = None
+        st.session_state.uploaded_image = None
         st.session_state.ocr_result = None
         st.session_state.show_results = False
+        st.session_state.show_duplicate_dialog = False
         st.rerun()
 
 with col_nav2:
-    if st.button("🔄 Recommencer", use_container_width=True):
+    if st.button("🔄 Recommencer", use_container_width=True, type="secondary"):
         st.session_state.uploaded_file = None
+        st.session_state.uploaded_image = None
         st.session_state.ocr_result = None
         st.session_state.show_results = False
+        st.session_state.show_duplicate_dialog = False
         st.rerun()
 
 # ============================================================
@@ -1287,8 +1512,8 @@ with col_nav2:
 # ============================================================
 st.markdown("---")
 st.markdown(f"""
-<div style="text-align: center; color: {PALETTE['muted']}; font-size: 0.9rem; padding: 1rem;">
+<div style="text-align: center; color: {PALETTE['tech_gray']}; font-size: 0.9rem; padding: 1rem; background: rgba(255, 255, 255, 0.05); border-radius: 12px;">
     <p><strong>{BRAND_TITLE}</strong> • Scanner Pro • © {datetime.now().strftime("%Y")}</p>
+    <p style="font-size: 0.8rem; opacity: 0.7;">Design Premium • Technologie Google Vision AI • Détection Intelligente</p>
 </div>
 """, unsafe_allow_html=True)
-
