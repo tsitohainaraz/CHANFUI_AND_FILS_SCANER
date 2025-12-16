@@ -14,7 +14,7 @@ import os
 # CONFIGURATION STREAMLIT
 # ============================================================
 st.set_page_config(
-    page_title="Chan Foui & Fils — Scanner Pro",
+    page_title="Chan Foui & Fils — Scanner Multi-Documents",
     page_icon="🍷",
     layout="centered",
     initial_sidebar_state="collapsed"
@@ -25,7 +25,7 @@ st.set_page_config(
 # ============================================================
 LOGO_FILENAME = "CF_LOGOS.png"
 BRAND_TITLE = "Chan Foui et Fils"
-BRAND_SUB = "Google Vision AI — Édition Pro"
+BRAND_SUB = "Google Vision AI — Scanner Multi-Documents"
 
 # Palette de couleurs Chan Foui
 PALETTE = {
@@ -38,9 +38,10 @@ PALETTE = {
 }
 
 # CSS personnalisé
-st.markdown(f"""
-<style>
-    :root {{
+st.markdown(
+    f"""
+    <style>
+    :root{{
         --petrol: {PALETTE['petrol']};
         --gold: {PALETTE['gold']};
         --ivory: {PALETTE['ivory']};
@@ -48,175 +49,85 @@ st.markdown(f"""
         --card: {PALETTE['card']};
         --soft: {PALETTE['soft']};
     }}
-    
-    .main {{
+    html, body, [data-testid='stAppViewContainer'] {{
         background: linear-gradient(180deg, var(--ivory), #fffdf9);
-    }}
-    
-    .stApp {{
-        background: var(--ivory);
         color: var(--petrol);
         font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
     }}
-    
-    /* Header avec logo */
+    .card {{
+        border-radius:14px;
+        background: var(--card);
+        padding:18px;
+        box-shadow: 0 10px 30px rgba(15,58,69,0.04);
+        border: 1px solid rgba(15,58,69,0.03);
+        margin-bottom:14px;
+    }}
+    .stButton>button {{
+        background: linear-gradient(180deg, var(--gold), #b58f2d);
+        color: #081214;
+        font-weight:700;
+        border-radius:10px;
+        padding:8px 12px;
+    }}
+    .secondary-button {{
+        background: linear-gradient(180deg, #f0f0f0, #d0d0d0) !important;
+        color: #333 !important;
+        font-weight:600 !important;
+        border-radius:10px !important;
+        padding:8px 12px !important;
+        border: 1px solid #ccc !important;
+    }}
     .logo-title-container {{
         display: flex;
         align-items: center;
         justify-content: center;
         gap: 20px;
         margin-bottom: 10px;
-        padding: 1rem;
     }}
-    
     .logo-img {{
         height: 80px;
         width: auto;
     }}
-    
     .brand-title {{
-        color: var(--petrol);
+        color: {PALETTE['petrol']};
         font-size: 2.5rem;
         font-weight: 700;
         margin: 0;
-        text-align: center;
     }}
-    
     .brand-sub {{
-        color: var(--muted);
+        color: {PALETTE['muted']};
         text-align: center;
         font-size: 1.1rem;
         margin-top: 0;
-        margin-bottom: 2rem;
     }}
-    
-    /* Cartes */
-    .card {{
-        border-radius: 14px;
-        background: var(--card);
-        padding: 1.5rem;
-        box-shadow: 0 10px 30px rgba(15, 58, 69, 0.04);
-        border: 1px solid rgba(15, 58, 69, 0.03);
-        margin-bottom: 1rem;
-    }}
-    
-    /* Boutons */
-    .stButton > button {{
-        background: linear-gradient(180deg, var(--gold), #b58f2d);
-        color: #081214;
-        font-weight: 700;
-        border-radius: 10px;
-        padding: 0.75rem 1.5rem;
-        border: none;
-        transition: all 0.3s ease;
-    }}
-    
-    .stButton > button:hover {{
-        transform: translateY(-2px);
-        box-shadow: 0 5px 15px rgba(212, 175, 55, 0.3);
-    }}
-    
-    .secondary-button {{
-        background: linear-gradient(180deg, #f0f0f0, #d0d0d0) !important;
-        color: #333 !important;
-        font-weight: 600 !important;
-        border-radius: 10px !important;
-        padding: 0.75rem 1.5rem !important;
-        border: 1px solid #ccc !important;
-    }}
-    
-    /* Sélecteur de document */
-    .doc-selector {{
-        display: flex;
-        gap: 1rem;
-        flex-wrap: wrap;
-        justify-content: center;
-        margin: 2rem 0;
-    }}
-    
-    .doc-option {{
-        flex: 1;
-        min-width: 150px;
-        text-align: center;
-        background: white;
-        padding: 1rem;
-        border-radius: 12px;
-        border: 2px solid transparent;
-        transition: all 0.3s ease;
-        cursor: pointer;
-    }}
-    
-    .doc-option.selected {{
-        border-color: var(--gold);
-        background: rgba(212, 175, 55, 0.1);
-    }}
-    
-    .doc-option:hover {{
-        transform: translateY(-3px);
-        box-shadow: 0 5px 15px rgba(0,0,0,0.1);
-    }}
-    
-    /* Zone de téléchargement */
-    .upload-box {{
-        border: 3px dashed var(--gold);
+    .doc-type-badge {{
+        background: linear-gradient(135deg, var(--gold) 0%, #b58f2d 100%);
+        color: white;
+        padding: 8px 16px;
         border-radius: 20px;
-        padding: 3rem;
+        font-weight: 600;
+        display: inline-block;
+        margin: 10px 0;
+    }}
+    .upload-section {{
+        border: 3px dashed var(--gold);
+        border-radius: 15px;
+        padding: 40px;
         text-align: center;
         background: rgba(212, 175, 55, 0.05);
-        margin: 2rem 0;
-        transition: all 0.3s ease;
+        margin: 20px 0;
     }}
-    
-    .upload-box:hover {{
-        background: rgba(212, 175, 55, 0.1);
-        border-color: var(--petrol);
-    }}
-    
-    /* Responsive */
-    @media (max-width: 768px) {{
-        .brand-title {{
-            font-size: 1.8rem;
-        }}
-        
-        .doc-option {{
-            min-width: 100%;
-        }}
-        
-        .upload-box {{
-            padding: 1.5rem;
-        }}
-        
-        .card {{
-            padding: 1rem;
-        }}
-        
-        .logo-title-container {{
-            flex-direction: column;
-            text-align: center;
-            gap: 10px;
-        }}
-        
-        .logo-img {{
-            height: 60px;
-        }}
-    }}
-    
-    /* Statistiques */
-    .stats-card {{
-        background: linear-gradient(135deg, var(--petrol) 0%, #0c2d35 100%);
+    .stat-box {{
+        background: var(--petrol);
         color: white;
-        padding: 1rem;
-        border-radius: 12px;
+        padding: 15px;
+        border-radius: 10px;
         text-align: center;
     }}
-    
-    .stats-number {{
-        font-size: 1.8rem;
-        font-weight: 800;
-        margin: 0.5rem 0;
-    }}
-</style>
-""", unsafe_allow_html=True)
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 # ============================================================
 # AUTHENTIFICATION
@@ -248,32 +159,49 @@ SHEET_GIDS = {
 # ============================================================
 # FONCTIONS COMMUNES
 # ============================================================
-def preprocess_image(b: bytes, radius=1.2, percent=180) -> bytes:
-    img = Image.open(BytesIO(b)).convert("RGB")
-    
-    # Redimensionnement si trop grand
+def preprocess_image(image_bytes: bytes) -> bytes:
+    """Prétraitement d'image standard"""
+    img = Image.open(BytesIO(image_bytes)).convert("RGB")
     max_w = 2600
     if img.width > max_w:
         ratio = max_w / img.width
         img = img.resize((max_w, int(img.height * ratio)), Image.LANCZOS)
-    
     img = ImageOps.autocontrast(img)
-    img = img.filter(ImageFilter.UnsharpMask(radius=radius, percent=percent))
+    img = img.filter(ImageFilter.MedianFilter(size=3))
+    img = img.filter(ImageFilter.UnsharpMask(radius=1, percent=120, threshold=3))
     out = BytesIO()
-    img.save(out, format="PNG")
+    img.save(out, format="JPEG", quality=90)
     return out.getvalue()
 
-def vision_ocr(b: bytes, creds: dict) -> str:
-    client = vision.ImageAnnotatorClient(
-        credentials=Credentials.from_service_account_info(creds)
-    )
-    image = vision.Image(content=b)
-    res = client.document_text_detection(image=image)
-    return res.full_text_annotation.text or ""
+def get_vision_client():
+    """Création du client Google Vision"""
+    if "gcp_vision" in st.secrets:
+        sa_info = dict(st.secrets["gcp_vision"])
+    elif "google_service_account" in st.secrets:
+        sa_info = dict(st.secrets["google_service_account"])
+    else:
+        raise RuntimeError("Credentials Google Vision introuvables dans st.secrets")
+    creds = Credentials.from_service_account_info(sa_info)
+    client = vision.ImageAnnotatorClient(credentials=creds)
+    return client
+
+def google_vision_ocr(img_bytes: bytes) -> str:
+    """OCR avec Google Vision AI"""
+    client = get_vision_client()
+    image = vision.Image(content=img_bytes)
+    response = client.text_detection(image=image)
+    if response.error and response.error.message:
+        raise Exception(f"Google Vision Error: {response.error.message}")
+    raw = ""
+    if response.text_annotations:
+        raw = response.text_annotations[0].description
+    return raw or ""
 
 def clean_text(text: str) -> str:
+    """Nettoyage du texte OCR"""
     text = text.replace("\r", "\n")
     text = re.sub(r"[^\S\r\n]+", " ", text)
+    text = re.sub(r"\s+\n", "\n", text)
     return text.strip()
 
 # ============================================================
@@ -283,6 +211,7 @@ def clean_text(text: str) -> str:
 # ----- FACTURE EN COMPTE -----
 def extract_facture(text: str):
     lines = [l.strip() for l in text.split("\n") if l.strip()]
+    
     result = {
         "date": "",
         "facture_numero": "",
@@ -379,6 +308,7 @@ def extract_facture(text: str):
 # ----- BDC LEADERPRICE -----
 def extract_leaderprice(text: str):
     lines = [l.strip() for l in text.split("\n") if l.strip()]
+    
     result = {
         "client": "LEADER PRICE",
         "numero": "",
@@ -473,6 +403,7 @@ def normalize_designation(designation: str) -> str:
 
 def extract_bdc_supermaki(text: str):
     lines = [l.strip() for l in text.split("\n") if l.strip()]
+    
     result = {
         "client": "SUPERMAKI",
         "numero": "",
@@ -528,6 +459,7 @@ def extract_bdc_supermaki(text: str):
 # ----- BDC ULYS -----
 def extract_bdc_ulys(text: str):
     lines = [l.strip() for l in text.split("\n") if l.strip()]
+    
     result = {
         "client": "ULYS",
         "numero": "",
@@ -740,12 +672,14 @@ if "ocr_result" not in st.session_state:
     st.session_state.ocr_result = None
 if "show_results" not in st.session_state:
     st.session_state.show_results = False
+if "invoice_scans" not in st.session_state:
+    st.session_state.invoice_scans = 0
+if "bdc_scans" not in st.session_state:
+    st.session_state.bdc_scans = 0
 
 # ============================================================
-# HEADER AVEC LOGO
+# HEADER AVEC LOGO ET TITRE
 # ============================================================
-st.markdown('<div class="logo-title-container">', unsafe_allow_html=True)
-
 col_logo, col_title = st.columns([1, 3])
 with col_logo:
     if os.path.exists(LOGO_FILENAME):
@@ -754,195 +688,197 @@ with col_logo:
         st.markdown("🍷")
 
 with col_title:
-    st.markdown(f'<h1 class="brand-title">{BRAND_TITLE}</h1>', unsafe_allow_html=True)
+    st.markdown(f"<h1 class='brand-title'>{BRAND_TITLE}</h1>", unsafe_allow_html=True)
 
-st.markdown('</div>', unsafe_allow_html=True)
-st.markdown(f'<p class="brand-sub">{BRAND_SUB}</p>', unsafe_allow_html=True)
+st.markdown(f"<p class='brand-sub'>{BRAND_SUB}</p>", unsafe_allow_html=True)
 
 # ============================================================
 # AUTHENTIFICATION
 # ============================================================
 if not st.session_state.auth:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<h3 style="text-align: center; color: var(--petrol);">🔐 Connexion</h3>', unsafe_allow_html=True)
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align:center'>🔐 Connexion</h3>", unsafe_allow_html=True)
     
-    nom = st.text_input("Nom utilisateur (ex: ADMIN)")
-    matricule = st.text_input("Code d'accès", type="password")
+    nom = st.text_input("Nom (ex: admin)")
+    mat = st.text_input("code", type="password")
     
-    col_btn1, col_btn2 = st.columns(2)
-    with col_btn1:
-        if st.button("Se connecter", use_container_width=True):
-            if nom and nom.upper() in AUTHORIZED_USERS and AUTHORIZED_USERS[nom.upper()] == matricule:
-                st.session_state.auth = True
-                st.session_state.user_nom = nom.upper()
-                st.rerun()
-            else:
-                st.error("❌ Nom ou code d'accès invalide")
-    
-    with col_btn2:
-        if st.button("Annuler", use_container_width=True):
+    if st.button("Se connecter"):
+        if nom and nom.upper() in AUTHORIZED_USERS and AUTHORIZED_USERS[nom.upper()] == mat:
+            st.session_state.auth = True
+            st.session_state.user_nom = nom.upper()
             st.rerun()
+        else:
+            st.error("❌ Nom ou matricule invalide")
     
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
 # ============================================================
 # SÉLECTION DU TYPE DE DOCUMENT
 # ============================================================
-if not st.session_state.document_type:
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<h3 style="text-align: center; color: var(--petrol);">📋 Sélectionnez le type de document</h3>', unsafe_allow_html=True)
+if st.session_state.document_type == "":
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("<h3 style='text-align:center'>📌 Choisissez un type de document</h3>", unsafe_allow_html=True)
     
-    doc_types = ["FACTURE EN COMPTE", "BDC LEADERPRICE", "BDC SUPERMAKI", "BDC ULYS"]
-    icons = {"FACTURE EN COMPTE": "🧾", "BDC LEADERPRICE": "🏪", "BDC SUPERMAKI": "🛒", "BDC ULYS": "🏢"}
+    # Affichage des options avec badges colorés
+    options = {
+        "FACTURE EN COMPTE": {"icon": "🧾", "color": PALETTE["gold"]},
+        "BDC LEADERPRICE": {"icon": "🏪", "color": PALETTE["petrol"]},
+        "BDC SUPERMAKI": {"icon": "🛒", "color": PALETTE["gold"]},
+        "BDC ULYS": {"icon": "🏢", "color": PALETTE["petrol"]}
+    }
     
-    cols = st.columns(len(doc_types))
-    for idx, doc_type in enumerate(doc_types):
-        with cols[idx]:
-            if st.button(f"{icons[doc_type]}\n\n{doc_type}", use_container_width=True):
-                st.session_state.document_type = doc_type
-                st.rerun()
+    col1, col2 = st.columns(2)
     
-    st.markdown('</div>', unsafe_allow_html=True)
+    with col1:
+        if st.button(f"{options['FACTURE EN COMPTE']['icon']} Scanner Facture", use_container_width=True):
+            st.session_state.document_type = "FACTURE EN COMPTE"
+            st.rerun()
+        
+        if st.button(f"{options['BDC LEADERPRICE']['icon']} BDC Leader Price", use_container_width=True):
+            st.session_state.document_type = "BDC LEADERPRICE"
+            st.rerun()
     
-    # Bouton déconnexion
-    if st.button("🚪 Déconnexion", use_container_width=True):
+    with col2:
+        if st.button(f"{options['BDC SUPERMAKI']['icon']} BDC Supermaki", use_container_width=True):
+            st.session_state.document_type = "BDC SUPERMAKI"
+            st.rerun()
+        
+        if st.button(f"{options['BDC ULYS']['icon']} BDC Ulys", use_container_width=True):
+            st.session_state.document_type = "BDC ULYS"
+            st.rerun()
+    
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    if st.button("🚪 Déconnexion"):
         st.session_state.auth = False
         st.session_state.user_nom = ""
-        st.session_state.document_type = ""
         st.rerun()
     
     st.stop()
 
 # ============================================================
-# INTERFACE PRINCIPALE
+# INTERFACE PRINCIPALE PAR TYPE DE DOCUMENT
 # ============================================================
-st.markdown(f'<h3 style="text-align: center; color: var(--petrol);">📄 {st.session_state.document_type}</h3>', unsafe_allow_html=True)
-st.markdown(f'<p style="text-align: center; color: var(--muted);">Connecté en tant que : {st.session_state.user_nom}</p>', unsafe_allow_html=True)
+# Affichage du type de document sélectionné
+doc_icons = {
+    "FACTURE EN COMPTE": "🧾",
+    "BDC LEADERPRICE": "🏪",
+    "BDC SUPERMAKI": "🛒",
+    "BDC ULYS": "🏢"
+}
+
+st.markdown(f"""
+<div class='card'>
+    <h3 style='text-align:center'>{doc_icons[st.session_state.document_type]} {st.session_state.document_type}</h3>
+</div>
+""", unsafe_allow_html=True)
 
 # Zone de téléchargement
-st.markdown('<div class="card">', unsafe_allow_html=True)
-st.markdown('<div class="upload-box">', unsafe_allow_html=True)
+st.markdown("<div class='card'>", unsafe_allow_html=True)
+st.markdown("<h4 style='text-align:center'>📤 Téléchargement du document</h4>", unsafe_allow_html=True)
 
 uploaded = st.file_uploader(
-    f"**Glissez-déposez votre document {st.session_state.document_type} ici**",
+    f"Importez l'image du document ({st.session_state.document_type})", 
     type=["jpg", "jpeg", "png"],
-    label_visibility="collapsed",
-    help="Formats supportés : JPG, JPEG, PNG"
+    key=f"{st.session_state.document_type}_uploader"
 )
 
-if uploaded:
-    st.success("✅ Document importé avec succès !")
-    
-st.markdown('</div>', unsafe_allow_html=True)
-st.markdown('</div>', unsafe_allow_html=True)
+if uploaded and uploaded != st.session_state.uploaded_file:
+    st.session_state.uploaded_file = uploaded
+    st.session_state.show_results = False
+    st.session_state.ocr_result = None
+
+st.markdown("</div>", unsafe_allow_html=True)
 
 # ============================================================
 # TRAITEMENT DU DOCUMENT
 # ============================================================
-if uploaded and uploaded != st.session_state.uploaded_file:
-    st.session_state.uploaded_file = uploaded
-    st.session_state.ocr_result = None
-    st.session_state.show_results = False
-
 if st.session_state.uploaded_file and not st.session_state.show_results:
-    # Aperçu de l'image
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<h4 style="color: var(--petrol);">👁️ Aperçu du document</h4>', unsafe_allow_html=True)
+    try:
+        img = Image.open(st.session_state.uploaded_file)
+        st.markdown("<div class='card'>", unsafe_allow_html=True)
+        st.markdown("<h4>Aperçu du document</h4>", unsafe_allow_html=True)
+        st.image(img, caption="Aperçu", use_column_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        # Convertir en bytes
+        buf = BytesIO()
+        img.save(buf, format="JPEG")
+        img_bytes = buf.getvalue()
+        
+        # Traitement OCR
+        with st.spinner("Traitement OCR en cours..."):
+            try:
+                # Prétraitement
+                cleaned = preprocess_image(img_bytes)
+                raw = google_vision_ocr(cleaned)
+                raw = clean_text(raw)
+                
+                # Extraction selon le type de document
+                if st.session_state.document_type == "FACTURE EN COMPTE":
+                    result = extract_facture(raw)
+                elif st.session_state.document_type == "BDC LEADERPRICE":
+                    result = extract_leaderprice(raw)
+                elif st.session_state.document_type == "BDC SUPERMAKI":
+                    result = extract_bdc_supermaki(raw)
+                elif st.session_state.document_type == "BDC ULYS":
+                    result = extract_bdc_ulys(raw)
+                
+                result["raw"] = raw
+                st.session_state.ocr_result = result
+                st.session_state.show_results = True
+                st.rerun()
+                
+            except Exception as e:
+                st.error(f"❌ Erreur OCR: {str(e)}")
     
-    image = Image.open(st.session_state.uploaded_file)
-    st.image(image, use_column_width=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Bouton d'analyse
-    col_btn1, col_btn2 = st.columns([1, 1])
-    with col_btn1:
-        if st.button("🚀 Lancer l'analyse", use_container_width=True):
-            with st.spinner("Analyse en cours avec Google Vision AI..."):
-                try:
-                    # Conversion de l'image
-                    buf = BytesIO()
-                    image.save(buf, format="JPEG")
-                    image_bytes = buf.getvalue()
-                    
-                    # Prétraitement spécifique
-                    if st.session_state.document_type == "FACTURE EN COMPTE":
-                        img_processed = preprocess_image(image_bytes, radius=1.1, percent=160)
-                    elif st.session_state.document_type == "BDC LEADERPRICE":
-                        img_processed = preprocess_image(image_bytes, radius=1.2, percent=170)
-                    else:
-                        img_processed = preprocess_image(image_bytes, radius=1.2, percent=180)
-                    
-                    # OCR
-                    if "gcp_vision" not in st.secrets:
-                        st.error("❌ Credentials Google Vision manquants")
-                        st.stop()
-                    
-                    creds = dict(st.secrets["gcp_vision"])
-                    raw_text = vision_ocr(img_processed, creds)
-                    raw_text = clean_text(raw_text)
-                    
-                    # Extraction selon le type de document
-                    if st.session_state.document_type == "FACTURE EN COMPTE":
-                        result = extract_facture(raw_text)
-                    elif st.session_state.document_type == "BDC LEADERPRICE":
-                        result = extract_leaderprice(raw_text)
-                    elif st.session_state.document_type == "BDC SUPERMAKI":
-                        result = extract_bdc_supermaki(raw_text)
-                    elif st.session_state.document_type == "BDC ULYS":
-                        result = extract_bdc_ulys(raw_text)
-                    
-                    result["raw_text"] = raw_text
-                    st.session_state.ocr_result = result
-                    st.session_state.show_results = True
-                    st.rerun()
-                    
-                except Exception as e:
-                    st.error(f"❌ Erreur lors de l'analyse: {str(e)}")
-    
-    with col_btn2:
-        if st.button("🔄 Changer de document", use_container_width=True):
-            st.session_state.uploaded_file = None
-            st.rerun()
+    except Exception as e:
+        st.error(f"❌ Erreur de traitement d'image: {str(e)}")
 
 # ============================================================
 # AFFICHAGE DES RÉSULTATS
 # ============================================================
-if st.session_state.show_results and st.session_state.ocr_result:
+elif st.session_state.uploaded_file and st.session_state.show_results and st.session_state.ocr_result:
     result = st.session_state.ocr_result
     
-    # Informations extraites
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<h4 style="color: var(--petrol);">📋 Informations extraites</h4>', unsafe_allow_html=True)
+    # Afficher les résultats
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Section informations détectées
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("<h4>📋 Informations détectées</h4>", unsafe_allow_html=True)
     
     if st.session_state.document_type == "FACTURE EN COMPTE":
         col1, col2 = st.columns(2)
         with col1:
-            mois = st.text_input("Mois", value=result.get("mois", ""))
-            doit = st.text_input("DOIT", value=result.get("doit", ""))
-            bon_commande = st.text_input("Bon de commande", value=result.get("bon_commande", ""))
+            mois = st.text_input("Mois", value=result.get("mois", ""), key="facture_mois")
+            doit = st.text_input("DOIT", value=result.get("doit", ""), key="facture_doit")
+            bon_commande = st.text_input("Bon de commande", value=result.get("bon_commande", ""), key="facture_bdc")
         
         with col2:
-            adresse = st.text_input("Adresse de livraison", value=result.get("adresse_livraison", ""))
-            facture = st.text_input("Numéro de facture", value=result.get("facture_numero", ""))
+            adresse = st.text_input("Adresse de livraison", value=result.get("adresse_livraison", ""), key="facture_adresse")
+            facture = st.text_input("Numéro de facture", value=result.get("facture_numero", ""), key="facture_num")
     
     else:  # BDC
-        col1, col2, col3 = st.columns(3)
+        col1, col2 = st.columns(2)
         with col1:
-            client = st.text_input("Client", value=result.get("client", ""))
-        with col2:
-            numero = st.text_input("Numéro BDC", value=result.get("numero", ""))
-        with col3:
-            date = st.text_input("Date", value=result.get("date", datetime.now().strftime("%d/%m/%Y")))
+            date = st.text_input("Date émission", value=result.get("date", datetime.now().strftime("%d/%m/%Y")), key="bdc_date")
+            client = st.text_input("Client", value=result.get("client", ""), key="bdc_client")
         
-        if st.session_state.document_type == "BDC SUPERMAKI":
-            adresse_livraison = st.text_input("Adresse de livraison", value=result.get("adresse_livraison", ""))
+        with col2:
+            numero = st.text_input("Numéro BDC", value=result.get("numero", ""), key="bdc_numero")
+            
+            if st.session_state.document_type == "BDC SUPERMAKI":
+                adresse = st.text_input("Adresse livraison", value=result.get("adresse_livraison", ""), key="bdc_adresse")
+            else:
+                adresse = st.text_input("Adresse livraison", value=result.get("adresse_livraison", "SCORE TALATAMATY"), key="bdc_adresse")
     
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
     
-    # Articles
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<h4 style="color: var(--petrol);">🛒 Articles détectés</h4>', unsafe_allow_html=True)
+    # Section articles
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("<h4>🛒 Articles détectés</h4>", unsafe_allow_html=True)
     
     if st.session_state.document_type == "FACTURE EN COMPTE":
         articles = result.get("articles", [])
@@ -953,12 +889,13 @@ if st.session_state.show_results and st.session_state.ocr_result:
                 num_rows="dynamic",
                 column_config={
                     "article": st.column_config.TextColumn("Article", width="large"),
-                    "bouteilles": st.column_config.NumberColumn("Bouteilles", min_value=0)
+                    "bouteilles": st.column_config.NumberColumn("Bouteilles", min_value=0, width="small")
                 },
-                use_container_width=True
+                use_container_width=True,
+                key="facture_articles"
             )
         else:
-            st.warning("Aucun article détecté")
+            st.warning("Aucun article détecté. Ajoutez-les manuellement.")
             df = pd.DataFrame(columns=["article", "bouteilles"])
             edited_df = st.data_editor(
                 df,
@@ -967,7 +904,8 @@ if st.session_state.show_results and st.session_state.ocr_result:
                     "article": st.column_config.TextColumn("Article"),
                     "bouteilles": st.column_config.NumberColumn("Bouteilles", min_value=0)
                 },
-                use_container_width=True
+                use_container_width=True,
+                key="facture_articles_empty"
             )
     else:
         articles = result.get("articles", [])
@@ -977,86 +915,119 @@ if st.session_state.show_results and st.session_state.ocr_result:
                 df,
                 num_rows="dynamic",
                 column_config={
-                    "Désignation": st.column_config.TextColumn("Article", width="large"),
-                    "Qté": st.column_config.TextColumn("Quantité")
+                    "Désignation": st.column_config.TextColumn("Article (Désignation)", width="large"),
+                    "Qté": st.column_config.TextColumn("Qté", width="small")
                 },
-                use_container_width=True
+                use_container_width=True,
+                key="bdc_articles"
             )
         else:
-            st.warning("Aucun article détecté")
+            st.warning("Aucun article détecté. Ajoutez-les manuellement.")
             df = pd.DataFrame(columns=["Désignation", "Qté"])
             edited_df = st.data_editor(
                 df,
                 num_rows="dynamic",
                 column_config={
-                    "Désignation": st.column_config.TextColumn("Article"),
-                    "Qté": st.column_config.TextColumn("Quantité")
+                    "Désignation": st.column_config.TextColumn("Article (Désignation)"),
+                    "Qté": st.column_config.TextColumn("Qté")
                 },
-                use_container_width=True
+                use_container_width=True,
+                key="bdc_articles_empty"
             )
     
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    # OCR brut
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    with st.expander("🔍 Voir le texte OCR brut"):
-        st.text_area("Texte OCR", value=result.get("raw_text", ""), height=200)
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Export vers Google Sheets
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<h4 style="color: var(--petrol);">📤 Export vers Google Sheets</h4>', unsafe_allow_html=True)
-    
-    if st.button("💾 Enregistrer dans Google Sheets", use_container_width=True):
-        try:
-            # Préparer les données pour l'export
-            export_data = {}
-            
+    # Bouton ajouter ligne
+    col_add1, col_add2 = st.columns([3, 1])
+    with col_add2:
+        if st.button("➕ Ajouter une ligne"):
             if st.session_state.document_type == "FACTURE EN COMPTE":
-                export_data = {
-                    "mois": mois,
-                    "doit": doit,
-                    "bon_commande": bon_commande,
-                    "adresse_livraison": adresse,
-                    "articles": edited_df.to_dict('records')
-                }
+                new_row = {"article": "", "bouteilles": 0}
             else:
-                export_data = {
-                    "client": client,
-                    "numero": numero,
-                    "date": date,
-                    "adresse_livraison": adresse_livraison if st.session_state.document_type == "BDC SUPERMAKI" else "",
-                    "articles": edited_df.to_dict('records')
-                }
+                new_row = {"Désignation": "", "Qté": ""}
             
-            # Sauvegarder dans Google Sheets
-            saved_count, duplicate_count = save_to_google_sheets(
-                st.session_state.document_type,
-                export_data,
-                st.session_state.user_nom
-            )
-            
-            if saved_count > 0:
-                st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succès dans Google Sheets!")
-                st.info(f"👤 Enregistré par: {st.session_state.user_nom}")
-                
-                # Bouton pour recommencer
-                if st.button("🔄 Scanner un autre document", use_container_width=True):
-                    st.session_state.uploaded_file = None
-                    st.session_state.ocr_result = None
-                    st.session_state.show_results = False
-                    st.rerun()
-            
-            elif duplicate_count > 0:
-                st.warning("⚠️ Ce document existe déjà dans la base de données")
-            
+            if 'edited_df' in locals():
+                edited_df = pd.concat([edited_df, pd.DataFrame([new_row])], ignore_index=True)
             else:
-                st.error("❌ Aucune donnée valide à enregistrer")
+                edited_df = pd.DataFrame([new_row])
+    
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Section OCR brut
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    with st.expander("📄 Voir le texte OCR brut"):
+        st.text_area("Texte OCR", value=result.get("raw", ""), height=200, key="ocr_raw")
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Section export Google Sheets
+    st.markdown("<div class='card'>", unsafe_allow_html=True)
+    st.markdown("<h4>📤 Export vers Google Sheets</h4>", unsafe_allow_html=True)
+    
+    if st.button("💾 Enregistrer dans Google Sheets", use_container_width=True, key="save_to_sheets"):
+        try:
+            # Vérifier que user_nom existe
+            if not hasattr(st.session_state, 'user_nom') or not st.session_state.user_nom:
+                st.error("❌ Erreur de session. Veuillez vous reconnecter.")
+            else:
+                # Préparer les données pour l'export
+                export_data = {}
                 
+                if st.session_state.document_type == "FACTURE EN COMPTE":
+                    export_data = {
+                        "mois": mois,
+                        "doit": doit,
+                        "bon_commande": bon_commande,
+                        "adresse_livraison": adresse,
+                        "articles": edited_df.to_dict('records')
+                    }
+                else:
+                    export_data = {
+                        "client": client,
+                        "numero": numero,
+                        "date": date,
+                        "adresse_livraison": adresse,
+                        "articles": edited_df.to_dict('records')
+                    }
+                
+                # Sauvegarder dans Google Sheets
+                saved_count, duplicate_count = save_to_google_sheets(
+                    st.session_state.document_type,
+                    export_data,
+                    st.session_state.user_nom
+                )
+                
+                if saved_count > 0:
+                    # Mettre à jour les statistiques
+                    if st.session_state.document_type == "FACTURE EN COMPTE":
+                        st.session_state.invoice_scans += 1
+                    else:
+                        st.session_state.bdc_scans += 1
+                    
+                    st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succès!")
+                    st.info(f"👤 Enregistré par: {st.session_state.user_nom}")
+                    
+                    # Bouton pour effacer et recommencer
+                    if st.button("🗑️ Effacer et recommencer", use_container_width=True, type="secondary"):
+                        st.session_state.uploaded_file = None
+                        st.session_state.show_results = False
+                        st.session_state.ocr_result = None
+                        st.rerun()
+                        
+                elif duplicate_count > 0:
+                    st.warning("⚠️ Ce document existe déjà dans la base de données.")
+                else:
+                    st.warning("⚠️ Aucune donnée valide à enregistrer")
+                    
         except Exception as e:
             st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
     
-    st.markdown('</div>', unsafe_allow_html=True)
+    # Bouton Effacer et recommencer
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("🗑️ Effacer et recommencer", use_container_width=True, type="secondary", key="clear_all"):
+        st.session_state.uploaded_file = None
+        st.session_state.show_results = False
+        st.session_state.ocr_result = None
+        st.rerun()
+    
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # ============================================================
 # MENU DE NAVIGATION
@@ -1073,7 +1044,7 @@ with col_nav1:
         st.rerun()
 
 with col_nav2:
-    if st.button("🔄 Nouveau scan", use_container_width=True):
+    if st.button("📄 Nouveau scan", use_container_width=True):
         st.session_state.uploaded_file = None
         st.session_state.ocr_result = None
         st.session_state.show_results = False
@@ -1093,8 +1064,6 @@ with col_nav3:
 # FOOTER
 # ============================================================
 st.markdown("---")
-st.markdown(f"""
-<p style='text-align: center; color: var(--muted); font-size: 0.9rem;'>
-    {BRAND_TITLE} • Scanner Pro • {datetime.now().strftime("%Y")}
-</p>
-""", unsafe_allow_html=True)
+st.markdown(f"<p style='text-align:center;color:{PALETTE['muted']};font-size:0.8em'>"
+            f"Session: {st.session_state.user_nom} | Factures: {st.session_state.invoice_scans} | BDC: {st.session_state.bdc_scans}</p>", 
+            unsafe_allow_html=True)
