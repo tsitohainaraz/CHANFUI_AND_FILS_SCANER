@@ -10,6 +10,8 @@ import gspread
 from datetime import datetime
 import os
 import time
+from dateutil import parser
+from typing import List, Tuple, Dict, Any
 
 # ============================================================
 # CONFIGURATION STREAMLIT
@@ -139,6 +141,16 @@ st.markdown(f"""
         color: {PALETTE['petrol']} !important;
     }}
     
+    .secondary-btn {{
+        background: linear-gradient(135deg, {PALETTE['muted']} 0%, #5a6c74 100%) !important;
+        color: white !important;
+    }}
+    
+    .danger-btn {{
+        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+        color: white !important;
+    }}
+    
     /* Zone de dépôt */
     .upload-box {{
         border: 3px dashed {PALETTE['gold']};
@@ -190,6 +202,14 @@ st.markdown(f"""
     .success-box {{
         background: linear-gradient(135deg, #d4f7e7 0%, #b8f0d4 100%);
         border-left: 4px solid #10b981;
+        padding: 1rem;
+        border-radius: 8px;
+        margin: 0.5rem 0;
+    }}
+    
+    .warning-box {{
+        background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+        border-left: 4px solid #f59e0b;
         padding: 1rem;
         border-radius: 8px;
         margin: 0.5rem 0;
@@ -260,41 +280,22 @@ st.markdown(f"""
             height: 60px;
         }}
     }}
-    
-    /* Badge mode */
-    .mode-badge {{
-        display: inline-block;
-        background: {PALETTE['petrol']};
-        color: white;
-        padding: 0.3rem 0.8rem;
-        border-radius: 20px;
-        font-size: 0.9rem;
-        font-weight: 600;
-        margin-left: 10px;
-        vertical-align: middle;
-    }}
 </style>
 """, unsafe_allow_html=True)
 
 # ============================================================
 # GOOGLE SHEETS CONFIGURATION
 # ============================================================
-SHEET_IDS = {
-    "FACTURE EN COMPTE": "1FooEwQBwLjvyjAsvHu4eDes0o-eEm92fbEWv6maBNyE",
-    "BDC LEADERPRICE": "1FooEwQBwLjvyjAsvHu4eDes0o-eEm92fbEWv6maBNyE",
-    "BDC SUPERMAKI": "1FooEwQBwLjvyjAsvHu4eDes0o-eEm92fbEWv6maBNyE",
-    "BDC ULYS": "1FooEwQBwLjvyjAsvHu4eDes0o-eEm92fbEWv6maBNyE"
-}
-
+SHEET_ID = "1FooEwQBwLjvyjAsvHu4eDes0o-eEm92fbEWv6maBNyE"
 SHEET_GIDS = {
-    "FACTURE EN COMPTE": 2108722556,
-    "BDC LEADERPRICE": 1487110894,
-    "BDC SUPERMAKI": 1487110894,
-    "BDC ULYS": 1487110894
+    "FACTURE EN COMPTE": 16102465,
+    "BDC LEADERPRICE": 95472891,
+    "BDC SUPERMAKI": 95472891,
+    "BDC ULYS": 95472891
 }
 
 # ============================================================
-# FONCTIONS COMMUNES
+# FONCTIONS UTILITAIRES
 # ============================================================
 def preprocess_image(b: bytes, radius=1.2, percent=180) -> bytes:
     img = Image.open(BytesIO(b)).convert("RGB")
@@ -317,11 +318,76 @@ def clean_text(text: str) -> str:
     text = re.sub(r"[^\S\r\n]+", " ", text)
     return text.strip()
 
-# ============================================================
-# FONCTIONS D'EXTRACTION (BACKEND ORIGINAL)
-# ============================================================
+def format_date_french(date_str: str) -> str:
+    """Convertit une date en format AAAA-MM-JJ"""
+    try:
+        # Essayer différents formats de date
+        formats = [
+            "%d/%m/%Y", "%d-%m-%Y", "%d %m %Y",
+            "%d/%m/%y", "%d-%m-%y", "%d %m %y",
+            "%d %B %Y", "%d %b %Y"
+        ]
+        
+        for fmt in formats:
+            try:
+                date_obj = datetime.strptime(date_str, fmt)
+                return date_obj.strftime("%Y-%m-%d")
+            except:
+                continue
+        
+        # Si aucun format ne fonctionne, essayer avec dateutil
+        date_obj = parser.parse(date_str, dayfirst=True)
+        return date_obj.strftime("%Y-%m-%d")
+    except:
+        return datetime.now().strftime("%Y-%m-%d")
 
-# ----- FACTURE EN COMPTE -----
+def get_month_from_date(date_str: str) -> str:
+    """Extrait le mois d'une date"""
+    months_fr = {
+        1: "janvier", 2: "février", 3: "mars", 4: "avril",
+        5: "mai", 6: "juin", 7: "juillet", 8: "août",
+        9: "septembre", 10: "octobre", 11: "novembre", 12: "décembre"
+    }
+    
+    try:
+        date_obj = parser.parse(date_str, dayfirst=True)
+        return months_fr[date_obj.month]
+    except:
+        return datetime.now().strftime("%B").lower()
+
+def format_quantity(qty: Any) -> str:
+    """Formate la quantité en remplaçant . par ,"""
+    if qty is None:
+        return "0"
+    
+    qty_str = str(qty)
+    # Remplacer . par , pour les décimales
+    qty_str = qty_str.replace(".", ",")
+    
+    # Si c'est un nombre décimal avec des zeros, nettoyer
+    if "," in qty_str:
+        parts = qty_str.split(",")
+        if len(parts) == 2 and parts[1] == "000":
+            qty_str = parts[0]
+    
+    return qty_str
+
+def map_client(client: str) -> str:
+    """Map le client selon les règles"""
+    client_upper = client.upper()
+    
+    if "ULYS" in client_upper:
+        return "ULYS"
+    elif "SUPERMAKI" in client_upper:
+        return "S2M"
+    elif "LEADER" in client_upper or "LEADERPRICE" in client_upper:
+        return "DLP"
+    else:
+        return client
+
+# ============================================================
+# FONCTIONS D'EXTRACTION
+# ============================================================
 def extract_facture(text: str):
     lines = [l.strip() for l in text.split("\n") if l.strip()]
     result = {
@@ -334,23 +400,22 @@ def extract_facture(text: str):
         "articles": []
     }
     
-    # Date
+    # Date et mois
     m = re.search(r"le\s+(\d{1,2}\s+\w+\s+\d{4})", text, re.IGNORECASE)
     if m:
         result["date"] = m.group(1)
-    
-    # Mois
-    months = {
-        "janvier": "Janvier", "février": "Février", "fevrier": "Février",
-        "mars": "Mars", "avril": "Avril", "mai": "Mai",
-        "juin": "Juin", "juillet": "Juillet", "août": "Août",
-        "aout": "Août", "septembre": "Septembre", "octobre": "Octobre",
-        "novembre": "Novembre", "décembre": "Décembre", "decembre": "Décembre"
-    }
-    for mname in months:
-        if re.search(r"\b" + re.escape(mname) + r"\b", text, flags=re.I):
-            result["mois"] = months[mname]
-            break
+        # Extraire le mois du texte de date
+        months_fr = {
+            "janvier": "janvier", "février": "février", "fevrier": "février",
+            "mars": "mars", "avril": "avril", "mai": "mai",
+            "juin": "juin", "juillet": "juillet", "août": "août",
+            "aout": "août", "septembre": "septembre", "octobre": "octobre",
+            "novembre": "novembre", "décembre": "décembre", "decembre": "décembre"
+        }
+        for month_fr, month_norm in months_fr.items():
+            if month_fr in result["date"].lower():
+                result["mois"] = month_norm
+                break
     
     # Numéro de facture
     m = re.search(r"FACTURE EN COMPTE\s+N[°o]?\s*(\d+)", text, re.IGNORECASE)
@@ -417,11 +482,10 @@ def extract_facture(text: str):
     
     return result
 
-# ----- BDC LEADERPRICE -----
 def extract_leaderprice(text: str):
     lines = [l.strip() for l in text.split("\n") if l.strip()]
     result = {
-        "client": "LEADER PRICE",
+        "client": "LEADERPRICE",
         "numero": "",
         "date": "",
         "adresse_livraison": "SCORE TALATAMATY",
@@ -488,7 +552,6 @@ def extract_leaderprice(text: str):
     
     return result
 
-# ----- BDC SUPERMAKI -----
 def normalize_designation(designation: str) -> str:
     d = designation.upper()
     d = re.sub(r"\s+", " ", d)
@@ -566,7 +629,6 @@ def extract_bdc_supermaki(text: str):
     
     return result
 
-# ----- BDC ULYS -----
 def extract_bdc_ulys(text: str):
     lines = [l.strip() for l in text.split("\n") if l.strip()]
     result = {
@@ -658,120 +720,218 @@ def get_worksheet(document_type: str):
             return None
         
         client = gspread.service_account_from_dict(sa_info)
-        sheet_id = SHEET_IDS.get(document_type)
+        sh = client.open_by_key(SHEET_ID)
         
-        if not sheet_id:
-            return None
-        
-        sh = client.open_by_key(sheet_id)
-        
-        # Chercher la feuille par ID
+        # Chercher la feuille par GID
         target_gid = SHEET_GIDS.get(document_type)
         for ws in sh.worksheets():
             if int(ws.id) == target_gid:
                 return ws
         
-        return sh.sheet1
+        return None
         
     except Exception as e:
         st.error(f"Erreur Google Sheets: {str(e)}")
         return None
 
-def save_to_google_sheets(document_type: str, data: dict, user_nom="SCANNER"):
-    ws = get_worksheet(document_type)
+def prepare_rows_for_sheet(document_type: str, data: dict, edited_df: pd.DataFrame) -> List[List[str]]:
+    """Prépare les lignes pour l'insertion dans Google Sheets"""
+    rows = []
     
-    if not ws:
-        return 0, 1  # Pas de feuille configurée
+    if document_type == "FACTURE EN COMPTE":
+        # Format FACT: Mois|Client|date|NBC|NF|lien|Magasin|Produit|Quantite|
+        mois = data.get("mois", "")
+        client = data.get("doit", "")
+        date = format_date_french(data.get("date", ""))
+        nbc = data.get("bon_commande", "")
+        nf = data.get("facture_numero", "")
+        magasin = data.get("adresse_livraison", "")
+        
+        for _, row in edited_df.iterrows():
+            article = row.get("article", "")
+            quantite = format_quantity(row.get("bouteilles", ""))
+            
+            rows.append([
+                mois,           # Mois
+                client,         # Client (DOIT)
+                date,           # Date (AAAA-MM-JJ)
+                nbc,            # NBC
+                nf,             # NF
+                "",             # Lien (vide)
+                magasin,        # Magasin
+                article,        # Produit
+                quantite        # Quantité
+            ])
     
+    else:  # BDC
+        # Format BDC: Mois|Client|Date émission|NBC|lien|Magasin|Produit|Quantite|
+        date_emission = data.get("date", "")
+        mois = get_month_from_date(date_emission)
+        client = map_client(data.get("client", ""))
+        date = format_date_french(date_emission)
+        nbc = data.get("numero", "")
+        magasin = data.get("adresse_livraison", "")
+        
+        for _, row in edited_df.iterrows():
+            if document_type == "FACTURE EN COMPTE":
+                article = row.get("article", "")
+                quantite = format_quantity(row.get("bouteilles", ""))
+            else:
+                article = row.get("Désignation", "")
+                quantite = format_quantity(row.get("Qté", ""))
+            
+            rows.append([
+                mois,           # Mois
+                client,         # Client (mappé)
+                date,           # Date émission (AAAA-MM-JJ)
+                nbc,            # NBC
+                "",             # Lien (vide)
+                magasin,        # Magasin
+                article,        # Produit
+                quantite        # Quantité
+            ])
+    
+    return rows
+
+def check_duplicates(worksheet, new_rows: List[List[str]], document_type: str) -> Tuple[List[int], List[List[str]]]:
+    """Vérifie les doublons et retourne les indices des lignes existantes et nouvelles lignes uniques"""
     try:
         # Récupérer toutes les données existantes
-        all_values = ws.get_all_values()
+        existing_data = worksheet.get_all_values()
         
-        # Vérifier les doublons selon le type de document
-        duplicate_count = 0
+        if len(existing_data) <= 1:  # Seulement l'en-tête ou vide
+            return [], new_rows
         
+        # Déterminer les colonnes clés pour la comparaison
         if document_type == "FACTURE EN COMPTE":
-            # Vérifier doublons pour facture
-            for row in all_values:
-                if len(row) >= 7:
-                    existing_mois = row[0] if len(row) > 0 else ""
-                    existing_bdc = row[3] if len(row) > 3 else ""
-                    existing_article = row[5] if len(row) > 5 else ""
-                    
-                    if (existing_mois == data.get("mois", "") and 
-                        existing_bdc == data.get("bon_commande", "") and
-                        any(item.get("article") == existing_article for item in data.get("articles", []))):
-                        duplicate_count += 1
-        else:
-            # Vérifier doublons pour BDC
-            for row in all_values:
-                if len(row) >= 6:
-                    existing_bdc = row[2] if len(row) > 2 else ""
-                    existing_client = row[1] if len(row) > 1 else ""
-                    existing_article = row[4] if len(row) > 4 else ""
-                    
-                    for item in data.get("articles", []):
-                        if (existing_bdc == data.get("numero", "") and 
-                            existing_client == data.get("client", "") and
-                            existing_article == item.get("Désignation", item.get("article", ""))):
-                            duplicate_count += 1
-        
-        if duplicate_count > 0:
-            return 0, duplicate_count
-        
-        # Préparer les données pour l'insertion
-        rows_to_add = []
-        
-        if document_type == "FACTURE EN COMPTE":
-            # Format pour facture: Mois | Doit | Date | Bon de commande | Adresse | Article | Bouteille | Editeur
-            for item in data.get("articles", []):
-                row = [
-                    data.get("mois", ""),
-                    data.get("doit", ""),
-                    datetime.now().strftime("%d/%m/%Y"),
-                    data.get("bon_commande", ""),
-                    data.get("adresse_livraison", ""),
-                    item.get("article", ""),
-                    item.get("bouteilles", ""),
-                    user_nom
-                ]
-                rows_to_add.append(row)
-        
+            # Clés: Mois, Client, NBC, NF, Produit
+            key_columns = [0, 1, 3, 4, 7]
         else:  # BDC
-            # Format pour BDC: Date émission | Client | Numéro BDC | Adresse | Article | Qte | Editeur
-            for item in data.get("articles", []):
-                row = [
-                    data.get("date", datetime.now().strftime("%d/%m/%Y")),
-                    data.get("client", ""),
-                    data.get("numero", ""),
-                    data.get("adresse_livraison", ""),
-                    item.get("Désignation", item.get("article", "")),
-                    item.get("Qté", item.get("bouteilles", "")),
-                    user_nom
-                ]
-                rows_to_add.append(row)
+            # Clés: Mois, Client, NBC, Produit
+            key_columns = [0, 1, 3, 6]
         
-        # Nettoyer les valeurs NaN
-        def clean_value(v):
-            if v is None:
-                return ""
-            if isinstance(v, float):
-                if np.isnan(v) or np.isinf(v):
-                    return ""
-            return str(v)
+        # Préparer un set des clés existantes
+        existing_keys = set()
+        duplicate_indices = []
         
-        rows_to_add = [[clean_value(x) for x in row] for row in rows_to_add]
+        for i, row in enumerate(existing_data[1:], start=2):  # Commence à la ligne 2 (après l'en-tête)
+            if len(row) >= max(key_columns) + 1:
+                key = tuple(str(row[col]).strip().lower() for col in key_columns)
+                existing_keys.add(key)
         
-        # Ajouter les nouvelles lignes
-        if rows_to_add:
-            ws.append_rows(rows_to_add)
-            return len(rows_to_add), 0
+        # Vérifier les nouvelles lignes
+        unique_new_rows = []
+        for new_row in new_rows:
+            if len(new_row) >= max(key_columns) + 1:
+                new_key = tuple(str(new_row[col]).strip().lower() for col in key_columns)
+                
+                # Vérifier si cette clé existe déjà
+                is_duplicate = False
+                for i, existing_row in enumerate(existing_data[1:], start=2):
+                    if len(existing_row) >= max(key_columns) + 1:
+                        existing_key = tuple(str(existing_row[col]).strip().lower() for col in key_columns)
+                        if existing_key == new_key:
+                            duplicate_indices.append(i)
+                            is_duplicate = True
+                            break
+                
+                if not is_duplicate:
+                    unique_new_rows.append(new_row)
         
-        return 0, 0
+        # Supprimer les doublons en double dans la liste des indices
+        duplicate_indices = list(set(duplicate_indices))
+        duplicate_indices.sort(reverse=True)  # Trier en ordre décroissant pour la suppression
+        
+        return duplicate_indices, unique_new_rows
         
     except Exception as e:
-        st.error(f"Erreur d'enregistrement: {str(e)}")
-        return 0, 0
+        st.error(f"Erreur lors de la vérification des doublons: {str(e)}")
+        return [], new_rows
+
+def save_to_google_sheets_with_duplicate_check(document_type: str, data: dict, edited_df: pd.DataFrame):
+    """Sauvegarde dans Google Sheets avec gestion des doublons"""
+    try:
+        ws = get_worksheet(document_type)
+        
+        if not ws:
+            st.error("❌ Impossible de se connecter à Google Sheets")
+            return False, "Erreur de connexion"
+        
+        # Préparer les nouvelles lignes
+        new_rows = prepare_rows_for_sheet(document_type, data, edited_df)
+        
+        if not new_rows:
+            return False, "Aucune donnée à enregistrer"
+        
+        # Vérifier les doublons
+        duplicate_indices, unique_new_rows = check_duplicates(ws, new_rows, document_type)
+        
+        if duplicate_indices:
+            # Afficher l'alerte de doublons
+            st.warning(f"⚠️ **{len(duplicate_indices)} doublon(s) détecté(s)**")
+            st.markdown('<div class="warning-box">', unsafe_allow_html=True)
+            st.markdown("**Ces données existent déjà dans le sheet :**")
+            
+            # Afficher les doublons détectés
+            existing_data = ws.get_all_values()
+            for idx in duplicate_indices:
+                if idx <= len(existing_data):
+                    row_data = existing_data[idx-1]
+                    st.text(f"Ligne {idx-1}: {row_data}")
+            
+            st.markdown('</div>', unsafe_allow_html=True)
+            
+            # Options pour l'utilisateur
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("✅ Écraser les doublons", use_container_width=True, key="overwrite_duplicates"):
+                    # Supprimer les lignes en doublon
+                    for idx in duplicate_indices:
+                        try:
+                            ws.delete_rows(idx)
+                        except Exception as e:
+                            st.error(f"Erreur lors de la suppression de la ligne {idx}: {str(e)}")
+                    
+                    # Ajouter toutes les nouvelles lignes
+                    try:
+                        ws.append_rows(new_rows)
+                        st.success(f"✅ {len(new_rows)} ligne(s) enregistrée(s) avec écrasement des doublons!")
+                        return True, f"{len(new_rows)} lignes enregistrées"
+                    except Exception as e:
+                        st.error(f"Erreur lors de l'enregistrement: {str(e)}")
+                        return False, str(e)
+            
+            with col2:
+                if st.button("📝 Ajouter seulement les nouvelles", use_container_width=True, key="add_only_new"):
+                    # Ajouter seulement les lignes uniques
+                    if unique_new_rows:
+                        try:
+                            ws.append_rows(unique_new_rows)
+                            st.success(f"✅ {len(unique_new_rows)} nouvelle(s) ligne(s) ajoutée(s) (doublons ignorés)!")
+                            return True, f"{len(unique_new_rows)} nouvelles lignes ajoutées"
+                        except Exception as e:
+                            st.error(f"Erreur lors de l'enregistrement: {str(e)}")
+                            return False, str(e)
+                    else:
+                        st.warning("Toutes les lignes sont des doublons, rien n'a été ajouté.")
+                        return False, "Toutes les lignes sont des doublons"
+            
+            return False, "En attente de décision sur les doublons"
+        
+        else:
+            # Pas de doublons, ajouter toutes les lignes
+            try:
+                ws.append_rows(new_rows)
+                st.success(f"✅ {len(new_rows)} ligne(s) enregistrée(s) avec succès dans Google Sheets!")
+                return True, f"{len(new_rows)} lignes enregistrées"
+            except Exception as e:
+                st.error(f"Erreur lors de l'enregistrement: {str(e)}")
+                return False, str(e)
+                
+    except Exception as e:
+        st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
+        return False, str(e)
 
 # ============================================================
 # SESSION STATE
@@ -967,11 +1127,21 @@ if st.session_state.show_results and st.session_state.ocr_result and not st.sess
         with col2:
             adresse = st.text_input("Adresse de livraison", value=result.get("adresse_livraison", ""), key="facture_adresse")
             facture = st.text_input("Numéro de facture", value=result.get("facture_numero", ""), key="facture_num")
+        
+        # Stocker les données pour Google Sheets
+        data_for_sheets = {
+            "mois": mois,
+            "doit": doit,
+            "date": result.get("date", ""),
+            "bon_commande": bon_commande,
+            "facture_numero": facture,
+            "adresse_livraison": adresse
+        }
     
     else:  # BDC
         col1, col2 = st.columns(2)
         with col1:
-            date = st.text_input("Date émission", value=result.get("date", datetime.now().strftime("%d/%m/%Y")), key="bdc_date")
+            date_emission = st.text_input("Date émission", value=result.get("date", datetime.now().strftime("%d/%m/%Y")), key="bdc_date")
             client = st.text_input("Client", value=result.get("client", ""), key="bdc_client")
         
         with col2:
@@ -981,6 +1151,14 @@ if st.session_state.show_results and st.session_state.ocr_result and not st.sess
                 adresse = st.text_input("Adresse livraison", value=result.get("adresse_livraison", ""), key="bdc_adresse")
             else:
                 adresse = st.text_input("Adresse livraison", value=result.get("adresse_livraison", "SCORE TALATAMATY"), key="bdc_adresse")
+        
+        # Stocker les données pour Google Sheets
+        data_for_sheets = {
+            "client": client,
+            "date": date_emission,
+            "numero": numero,
+            "adresse_livraison": adresse
+        }
     
     st.markdown('</div>', unsafe_allow_html=True)
     
@@ -1000,7 +1178,7 @@ if st.session_state.show_results and st.session_state.ocr_result and not st.sess
                     "bouteilles": st.column_config.NumberColumn("Bouteilles", min_value=0)
                 },
                 use_container_width=True,
-                key="facture_articles"
+                key="facture_articles_editor"
             )
         else:
             st.warning("⚠️ Aucun article détecté")
@@ -1013,7 +1191,7 @@ if st.session_state.show_results and st.session_state.ocr_result and not st.sess
                     "bouteilles": st.column_config.NumberColumn("Bouteilles", min_value=0)
                 },
                 use_container_width=True,
-                key="facture_articles_empty"
+                key="facture_articles_editor_empty"
             )
     else:
         articles = result.get("articles", [])
@@ -1027,7 +1205,7 @@ if st.session_state.show_results and st.session_state.ocr_result and not st.sess
                     "Qté": st.column_config.TextColumn("Quantité")
                 },
                 use_container_width=True,
-                key="bdc_articles"
+                key="bdc_articles_editor"
             )
         else:
             st.warning("⚠️ Aucun article détecté")
@@ -1040,7 +1218,7 @@ if st.session_state.show_results and st.session_state.ocr_result and not st.sess
                     "Qté": st.column_config.TextColumn("Quantité")
                 },
                 use_container_width=True,
-                key="bdc_articles_empty"
+                key="bdc_articles_editor_empty"
             )
     
     # Statistiques
@@ -1064,55 +1242,19 @@ if st.session_state.show_results and st.session_state.ocr_result and not st.sess
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<h4 style="color: var(--petrol);">📤 Export vers Google Sheets</h4>', unsafe_allow_html=True)
     
-    col_btn1, col_btn2 = st.columns([3, 1])
-    with col_btn1:
-        if st.button("💾 Enregistrer dans Google Sheets", use_container_width=True):
-            try:
-                # Préparer les données pour l'export
-                export_data = {}
+    if st.button("💾 Enregistrer dans Google Sheets", use_container_width=True, key="save_to_sheets"):
+        try:
+            success, message = save_to_google_sheets_with_duplicate_check(
+                st.session_state.document_type,
+                data_for_sheets,
+                edited_df
+            )
+            
+            if success:
+                st.balloons()
                 
-                if st.session_state.document_type == "FACTURE EN COMPTE":
-                    export_data = {
-                        "mois": mois,
-                        "doit": doit,
-                        "bon_commande": bon_commande,
-                        "adresse_livraison": adresse,
-                        "articles": edited_df.to_dict('records')
-                    }
-                else:
-                    export_data = {
-                        "client": client,
-                        "numero": numero,
-                        "date": date,
-                        "adresse_livraison": adresse,
-                        "articles": edited_df.to_dict('records')
-                    }
-                
-                # Sauvegarder dans Google Sheets
-                saved_count, duplicate_count = save_to_google_sheets(
-                    st.session_state.document_type,
-                    export_data
-                )
-                
-                if saved_count > 0:
-                    st.success(f"✅ {saved_count} ligne(s) enregistrée(s) avec succès dans Google Sheets!")
-                    st.balloons()
-                
-                elif duplicate_count > 0:
-                    st.warning("⚠️ Ce document existe déjà dans la base de données")
-                
-                else:
-                    st.error("❌ Aucune donnée valide à enregistrer")
-                    
-            except Exception as e:
-                st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
-    
-    with col_btn2:
-        if st.button("🔄 Nouveau scan", use_container_width=True):
-            st.session_state.uploaded_file = None
-            st.session_state.ocr_result = None
-            st.session_state.show_results = False
-            st.rerun()
+        except Exception as e:
+            st.error(f"❌ Erreur lors de l'enregistrement: {str(e)}")
     
     st.markdown('</div>', unsafe_allow_html=True)
     
@@ -1152,4 +1294,3 @@ st.markdown(f"""
     <p><strong>{BRAND_TITLE}</strong> • Scanner Pro • © {datetime.now().strftime("%Y")}</p>
 </div>
 """, unsafe_allow_html=True)
-
