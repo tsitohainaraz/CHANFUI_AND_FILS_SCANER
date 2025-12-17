@@ -1567,6 +1567,21 @@ st.markdown(f'''
 </div>
 ''', unsafe_allow_html=True)
 
+if st.session_state.document_type == "FACTURE EN COMPTE":
+    st.markdown(
+        f"""
+        <div class="card" style="text-align: center;">
+            <h3>Bravo {st.session_state.username} 🎉</h3>
+            <p style="font-size: 1.05rem;">
+                Vous êtes maintenant sur la page <strong>Facture en compte</strong>.<br>
+                Veuillez importer une photo de la facture, bien claire,
+                afin que je puisse la lire correctement. 🤖📸
+            </p>
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
+
 # ============================================================
 # ZONE DE TÉLÉCHARGEMENT
 # ============================================================
@@ -1967,6 +1982,7 @@ st.markdown(f"""
     </p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
