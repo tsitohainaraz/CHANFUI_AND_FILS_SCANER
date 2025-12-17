@@ -1792,7 +1792,7 @@ if st.session_state.show_results and st.session_state.ocr_result and not st.sess
         st.markdown('<h4>🔍 Vérification des doublons</h4>', unsafe_allow_html=True)
         
         # Bouton pour vérifier les doublons
-        if st.button("🔎 Enregistré dans Google Sheets", use_container_width=True, key="check_duplicates"):
+        if st.button("🔎 Vérifier si le document existe déjà", use_container_width=True, key="check_duplicates"):
             with st.spinner("Recherche de documents similaires..."):
                 ws = get_worksheet(st.session_state.document_type)
                 if ws:
@@ -1951,5 +1951,6 @@ st.markdown(f"""
     </p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
