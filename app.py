@@ -203,11 +203,11 @@ if not check_authentication():
             st.warning("⚠️ Veuillez remplir tous les champs")
     
     # Liste des utilisateurs autorisés
-    st.markdown('<div class="user-list">', unsafe_allow_html=True)
-    st.markdown("**👥 Utilisateurs autorisés :**")
-    for user, code in AUTHORIZED_USERS.items():
-        st.markdown(f'<div class="user-item"><strong>{user}</strong> : Code {code}</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+  #  st.markdown('<div class="user-list">', unsafe_allow_html=True)
+  #  st.markdown("**👥 Utilisateurs autorisés :**")
+   # for user, code in AUTHORIZED_USERS.items():
+  #      st.markdown(f'<div class="user-item"><strong>{user}</strong> : Code {code}</div>', unsafe_allow_html=True)
+  #  st.markdown('</div>', unsafe_allow_html=True)
     
     # Avertissement de sécurité
     st.markdown("""
@@ -1958,3 +1958,4 @@ st.markdown(f"""
     </p>
 </div>
 """, unsafe_allow_html=True)
+
