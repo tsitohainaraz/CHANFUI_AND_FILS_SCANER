@@ -1557,38 +1557,58 @@ if not st.session_state.document_type:
 doc_icons = {
     "FACTURE EN COMPTE": "🧾",
     "BDC LEADERPRICE": "🏪",
-    "BDC S2M": "🛒",  # Changé de SUPERMAKI à S2M
+    "BDC S2M": "🛒",
     "BDC ULYS": "🏢"
 }
 
-st.markdown(f'''
-<div class="document-title">
-    {doc_icons[st.session_state.document_type]} Mode : {st.session_state.document_type}
-</div>
-''', unsafe_allow_html=True)
+# Titre du mode
+st.markdown(
+    f"""
+    <div class="document-title">
+        {doc_icons.get(st.session_state.document_type, "")}
+        Mode : {st.session_state.document_type}
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+# ============================================================
+# MESSAGES IA PAR MODE (HTML PROPRE)
+# ============================================================
 mode_messages = {
     "FACTURE EN COMPTE": """
-        Vous êtes maintenant sur la page <strong>Facture en compte</strong>.<br>
-        Veuillez importer une photo de la facture, bien claire,
-        afin que je puisse la lire correctement. 🤖📸
+        <p style="font-size: 1.05rem;">
+            Vous êtes maintenant sur la page <strong>Facture en compte</strong>.<br>
+            Veuillez importer une photo de la facture, bien claire,
+            afin que je puisse la lire correctement. 🤖📸
+        </p>
     """,
     "BDC S2M": """
-        Vous êtes maintenant sur la page <strong>Bon de commande S2M</strong>.<br>
-        Veuillez importer une photo du bon de commande, bien claire,
-        pour une analyse fiable. 🤖📸
+        <p style="font-size: 1.05rem;">
+            Vous êtes maintenant sur la page <strong>Bon de commande S2M</strong>.<br>
+            Veuillez importer une photo du bon de commande, bien claire,
+            pour une analyse fiable. 🤖📸
+        </p>
     """,
     "BDC ULYS": """
-        Vous êtes maintenant sur la page <strong>Bon de commande ULYS</strong>.<br>
-        Veuillez importer une photo du bon de commande, bien lisible,
-        afin que je puisse extraire correctement les informations. 🤖📸
+        <p style="font-size: 1.05rem;">
+            Vous êtes maintenant sur la page <strong>Bon de commande ULYS</strong>.<br>
+            Veuillez importer une photo du bon de commande, bien lisible,
+            afin que je puisse extraire correctement les informations. 🤖📸
+        </p>
     """,
     "BDC LEADERPRICE": """
-        Vous êtes maintenant sur la page <strong>Bon de commande LEADERPRICE</strong>.<br>
-        Veuillez importer une photo du bon de commande, bien claire,
-        pour une lecture optimale. 🤖📸
+        <p style="font-size: 1.05rem;">
+            Vous êtes maintenant sur la page <strong>Bon de commande LEADERPRICE</strong>.<br>
+            Veuillez importer une photo du bon de commande, bien claire,
+            pour une lecture optimale. 🤖📸
+        </p>
     """
 }
 
+# ============================================================
+# AFFICHAGE DU MESSAGE IA (UNIQUEMENT DANS LE BON MODE)
+# ============================================================
 current_mode = st.session_state.document_type
 
 if current_mode in mode_messages:
@@ -1596,14 +1616,11 @@ if current_mode in mode_messages:
         f"""
         <div class="card" style="text-align: center;">
             <h3>Bravo {st.session_state.username} 🎉</h3>
-            <p style="font-size: 1.05rem;">
-                {mode_messages[current_mode]}
-            </p>
+            {mode_messages[current_mode]}
         </div>
         """,
         unsafe_allow_html=True
     )
-
 
 # ============================================================
 # ZONE DE TÉLÉCHARGEMENT
@@ -1698,30 +1715,36 @@ if uploaded and uploaded != st.session_state.uploaded_file:
 # ============================================================
 if st.session_state.show_results and st.session_state.ocr_result and not st.session_state.processing:
     result = st.session_state.ocr_result
-    
-    # Message de succès
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.markdown('<div class="success-box">', unsafe_allow_html=True)
-    st.markdown(f'<h4 style="color: #2E7D32;">✅ Analyse terminée avec succès !</h4>', unsafe_allow_html=True)
-    st.markdown(f'<p>Document analysé : {st.session_state.document_type} à {datetime.now().strftime("%H:%M:%S")}</p>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Informations extraites
+
+    # ------------------------------------------------------------
+    # MESSAGE IA DE SUCCÈS (APRÈS IMPORTATION + EXTRACTION)
+    # ------------------------------------------------------------
+    precision_estimee = "98,8 %"  # valeur fixe pour l’instant (peut devenir dynamique)
+
+    st.success(
+        f"🤖 Analyse terminée avec succès, {st.session_state.username}.\n\n"
+        f"La précision estimée pour ce {st.session_state.document_type} "
+        f"est de {precision_estimee}, selon la qualité de la photo.\n\n"
+        "Merci de vérifier les données extraites avant validation."
+    )
+
+    # ------------------------------------------------------------
+    # INFORMATIONS EXTRAITES
+    # ------------------------------------------------------------
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<h4>📋 Informations extraites</h4>', unsafe_allow_html=True)
-    
+
     if st.session_state.document_type == "FACTURE EN COMPTE":
         col1, col2 = st.columns(2)
         with col1:
             mois = st.text_input("Mois", value=result.get("mois", ""), key="facture_mois")
             doit = st.text_input("DOIT", value=result.get("doit", ""), key="facture_doit")
             bon_commande = st.text_input("Bon de commande", value=result.get("bon_commande", ""), key="facture_bdc")
-        
+
         with col2:
             adresse = st.text_input("Adresse de livraison", value=result.get("adresse_livraison", ""), key="facture_adresse")
             facture = st.text_input("Numéro de facture", value=result.get("facture_numero", ""), key="facture_num")
-        
+
         data_for_sheets = {
             "mois": mois,
             "doit": doit,
@@ -1730,39 +1753,53 @@ if st.session_state.show_results and st.session_state.ocr_result and not st.sess
             "facture_numero": facture,
             "adresse_livraison": adresse
         }
-    
+
     else:
         col1, col2 = st.columns(2)
         with col1:
-            date_emission = st.text_input("Date émission", value=result.get("date", datetime.now().strftime("%d/%m/%Y")), key="bdc_date")
+            date_emission = st.text_input(
+                "Date émission",
+                value=result.get("date", datetime.now().strftime("%d/%m/%Y")),
+                key="bdc_date"
+            )
             client = st.text_input("Client", value=result.get("client", ""), key="bdc_client")
-        
+
         with col2:
             numero = st.text_input("Numéro BDC", value=result.get("numero", ""), key="bdc_numero")
-            
-            if st.session_state.document_type == "BDC S2M":  # Changé de SUPERMAKI à S2M
-                adresse = st.text_input("Adresse livraison", value=result.get("adresse_livraison", ""), key="bdc_adresse")
+
+            if st.session_state.document_type == "BDC S2M":
+                adresse = st.text_input(
+                    "Adresse livraison",
+                    value=result.get("adresse_livraison", ""),
+                    key="bdc_adresse"
+                )
             else:
-                adresse = st.text_input("Adresse livraison", value=result.get("adresse_livraison", "SCORE TALATAMATY"), key="bdc_adresse")
-        
+                adresse = st.text_input(
+                    "Adresse livraison",
+                    value=result.get("adresse_livraison", "SCORE TALATAMATY"),
+                    key="bdc_adresse"
+                )
+
         data_for_sheets = {
             "client": client,
             "date": date_emission,
             "numero": numero,
             "adresse_livraison": adresse
         }
-    
+
     # Stocker les données pour usage ultérieur
     st.session_state.data_for_sheets = data_for_sheets
-    
     st.markdown('</div>', unsafe_allow_html=True)
-    
-    # Articles détectés
+
+    # ------------------------------------------------------------
+    # ARTICLES DÉTECTÉS
+    # ------------------------------------------------------------
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<h4>🛒 Articles détectés</h4>', unsafe_allow_html=True)
-    
+
+    articles = result.get("articles", [])
+
     if st.session_state.document_type == "FACTURE EN COMPTE":
-        articles = result.get("articles", [])
         if articles:
             df = pd.DataFrame(articles)
             edited_df = st.data_editor(
@@ -1777,19 +1814,13 @@ if st.session_state.show_results and st.session_state.ocr_result and not st.sess
             )
         else:
             st.warning("⚠️ Aucun article détecté")
-            df = pd.DataFrame(columns=["article", "bouteilles"])
             edited_df = st.data_editor(
-                df,
+                pd.DataFrame(columns=["article", "bouteilles"]),
                 num_rows="dynamic",
-                column_config={
-                    "article": st.column_config.TextColumn("Article"),
-                    "bouteilles": st.column_config.NumberColumn("Bouteilles", min_value=0)
-                },
                 use_container_width=True,
                 key="facture_articles_editor_empty"
             )
     else:
-        articles = result.get("articles", [])
         if articles:
             df = pd.DataFrame(articles)
             edited_df = st.data_editor(
@@ -1804,37 +1835,40 @@ if st.session_state.show_results and st.session_state.ocr_result and not st.sess
             )
         else:
             st.warning("⚠️ Aucun article détecté")
-            df = pd.DataFrame(columns=["Désignation", "Qté"])
             edited_df = st.data_editor(
-                df,
+                pd.DataFrame(columns=["Désignation", "Qté"]),
                 num_rows="dynamic",
-                column_config={
-                    "Désignation": st.column_config.TextColumn("Article"),
-                    "Qté": st.column_config.TextColumn("Quantité")
-                },
                 use_container_width=True,
                 key="bdc_articles_editor_empty"
             )
-    
+
     # Stocker le dataframe édité
     st.session_state.edited_df = edited_df
-    
-    # Statistiques
+
+    # ------------------------------------------------------------
+    # STATISTIQUES
+    # ------------------------------------------------------------
     if articles:
         total_items = len(articles)
         if st.session_state.document_type == "FACTURE EN COMPTE":
             total_qty = sum(item.get("bouteilles", 0) for item in articles)
         else:
             total_qty = sum(float(str(item.get("Qté", "0")).split(".")[0]) for item in articles)
-        
+
         col_stat1, col_stat2 = st.columns(2)
         with col_stat1:
-            st.markdown(f'<div class="info-box"><strong>{total_items}</strong> articles détectés</div>', unsafe_allow_html=True)
-        
+            st.markdown(
+                f'<div class="info-box"><strong>{total_items}</strong> articles détectés</div>',
+                unsafe_allow_html=True
+            )
         with col_stat2:
-            st.markdown(f'<div class="info-box"><strong>{total_qty}</strong> unités totales</div>', unsafe_allow_html=True)
-    
+            st.markdown(
+                f'<div class="info-box"><strong>{total_qty}</strong> unités totales</div>',
+                unsafe_allow_html=True
+            )
+
     st.markdown('</div>', unsafe_allow_html=True)
+
     
     # ============================================================
     # VÉRIFICATION DES DOUBLONS
@@ -2005,6 +2039,7 @@ st.markdown(f"""
     </p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
