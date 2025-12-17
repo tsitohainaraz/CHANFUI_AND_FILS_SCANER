@@ -29,9 +29,10 @@ st.set_page_config(
 # ============================================================
 # Utilisateurs autorisés avec leurs codes
 AUTHORIZED_USERS = {
-    "Pathou M": "CFF3",
+    "Pathou M.": "CFF3",
     "Elodie R.": "CFF2", 
-    "Laetitia C": "CFF1"
+    "Laetitia C.": "CFF1",
+    "Admin Cf.": "CFF4"
 }
 
 # Initialisation des états de session pour l'authentification
@@ -1952,6 +1953,7 @@ st.markdown(f"""
     </p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
