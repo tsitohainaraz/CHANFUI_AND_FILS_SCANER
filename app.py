@@ -187,8 +187,9 @@ if not check_authentication():
     st.markdown('<p class="login-subtitle">Système de Scanner Pro - Accès Restreint</p>', unsafe_allow_html=True)
     
     # Formulaire de connexion
-    username = st.text_input("👤 Nom d'utilisateur", placeholder="Entrez votre nom")
-    password = st.text_input("🔒 Code d'accès", type="password", placeholder="Entrez votre code CFF")
+    username = st.selectbox(
+    "👤 Nom d'utilisateur",options=[""] + list(AUTHORIZED_USERS.keys()),format_func=lambda x: "— Sélectionnez votre nom —" if x == "" else x)
+    password = st.text_input("🔒 Code d'accès", type="password", placeholder="Entrez votre code CFFx")
     
     if st.button("🔓 Se connecter", use_container_width=True):
         if username and password:
@@ -1951,6 +1952,7 @@ st.markdown(f"""
     </p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
