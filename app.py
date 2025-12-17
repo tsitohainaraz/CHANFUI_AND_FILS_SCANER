@@ -1566,21 +1566,44 @@ st.markdown(f'''
     {doc_icons[st.session_state.document_type]} Mode : {st.session_state.document_type}
 </div>
 ''', unsafe_allow_html=True)
+mode_messages = {
+    "FACTURE EN COMPTE": """
+        Vous êtes maintenant sur la page <strong>Facture en compte</strong>.<br>
+        Veuillez importer une photo de la facture, bien claire,
+        afin que je puisse la lire correctement. 🤖📸
+    """,
+    "BDC S2M": """
+        Vous êtes maintenant sur la page <strong>Bon de commande S2M</strong>.<br>
+        Veuillez importer une photo du bon de commande, bien claire,
+        pour une analyse fiable. 🤖📸
+    """,
+    "BDC ULYS": """
+        Vous êtes maintenant sur la page <strong>Bon de commande ULYS</strong>.<br>
+        Veuillez importer une photo du bon de commande, bien lisible,
+        afin que je puisse extraire correctement les informations. 🤖📸
+    """,
+    "BDC LEADERPRICE": """
+        Vous êtes maintenant sur la page <strong>Bon de commande LEADERPRICE</strong>.<br>
+        Veuillez importer une photo du bon de commande, bien claire,
+        pour une lecture optimale. 🤖📸
+    """
+}
 
-if st.session_state.document_type == "FACTURE EN COMPTE":
+current_mode = st.session_state.document_type
+
+if current_mode in mode_messages:
     st.markdown(
         f"""
         <div class="card" style="text-align: center;">
             <h3>Bravo {st.session_state.username} 🎉</h3>
             <p style="font-size: 1.05rem;">
-                Vous êtes maintenant sur la page <strong>Facture en compte</strong>.<br>
-                Veuillez importer une photo de la facture, bien claire,
-                afin que je puisse la lire correctement. 🤖📸
+                {mode_messages[current_mode]}
             </p>
         </div>
         """,
         unsafe_allow_html=True
     )
+
 
 # ============================================================
 # ZONE DE TÉLÉCHARGEMENT
@@ -1982,6 +2005,7 @@ st.markdown(f"""
     </p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
