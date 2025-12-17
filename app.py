@@ -1803,6 +1803,8 @@ if st.session_state.show_results and st.session_state.ocr_result and not st.sess
                         data_for_sheets,
                         ws
                     )
+                    if not duplicate_found:
+                        st.success("🆕 Ce document n’existe pas encore dans la base. Vous pouvez l’enregistrer.")
                     
                     if duplicate_found:
                         st.session_state.duplicate_found = True
@@ -1953,6 +1955,7 @@ st.markdown(f"""
     </p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
