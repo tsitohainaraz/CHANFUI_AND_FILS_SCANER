@@ -1510,7 +1510,8 @@ if st.session_state.uploaded_file is not None and st.session_state.uploaded_imag
 # ============================================================
 # SÉLECTION DU TYPE DE DOCUMENT
 # ============================================================
-st.markdown(
+if not st.session_state.document_type:
+    st.markdown(
     f"""
     <div class="card" style="text-align: center;">
         <h3>Bonjour {st.session_state.username} 🤖</h3>
@@ -1521,8 +1522,7 @@ st.markdown(
     </div>
     """,
     unsafe_allow_html=True
-)
-if not st.session_state.document_type:
+    )
     st.markdown('<div class="card">', unsafe_allow_html=True)
     st.markdown('<h4 style="text-align: center;">📋 Sélectionnez le type de document</h4>', unsafe_allow_html=True)
     
@@ -1967,6 +1967,7 @@ st.markdown(f"""
     </p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
