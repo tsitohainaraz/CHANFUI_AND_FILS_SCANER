@@ -1948,13 +1948,14 @@ with col_logout[0]:
 # ============================================================
 st.markdown(f"""
 <div style="text-align: center; color: {PALETTE['text_medium']}; font-size: 0.9rem; padding: 1.5rem; background: {PALETTE['card_bg']}; border-radius: 12px; margin-top: 2rem; border-top: 1px solid {PALETTE['border']}">
-    <p><strong>{BRAND_TITLE}</strong> • Scanner Pro • © {datetime.now().strftime("%Y")}</p>
+    <p><strong>{BRAND_TITLE}</strong> • Chanfoui IA V1 • © {datetime.now().strftime("%Y")}</p>
     <p style="font-size: 0.8rem; margin-top: 0.5rem; opacity: 0.8;">
         Connecté en tant que <strong>{st.session_state.username}</strong> • 
-        Design optimisé pour la lisibilité • Interface S2M • Détection de doublons intégrée
+        Je vous aide à optimiser 98 % de vos tâches d’enregistrement de factures et de BDC
     </p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
