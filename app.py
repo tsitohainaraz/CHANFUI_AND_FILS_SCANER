@@ -1611,7 +1611,13 @@ mode_messages = {
 # ============================================================
 current_mode = st.session_state.document_type
 
-if current_mode in mode_messages:
+# ------------------------------------------------------------
+# MESSAGE D’ACCUEIL (UNIQUEMENT AVANT UPLOAD)
+# ------------------------------------------------------------
+if (
+    current_mode in mode_messages
+    and st.session_state.uploaded_file is None
+):
     st.markdown(
         f"""
         <div class="card" style="text-align: center;">
@@ -2039,6 +2045,7 @@ st.markdown(f"""
     </p>
 </div>
 """, unsafe_allow_html=True)
+
 
 
 
