@@ -1075,8 +1075,8 @@ if not check_authentication():
         </div>
         """, unsafe_allow_html=True)
     
-    st.markdown('<h1 class="login-title">CHAN FOUI ET FILS</h1>', unsafe_allow_html=True)
-    st.markdown('<p class="login-subtitle">Système de Scanner Pro - Accès Restreint</p>', unsafe_allow_html=True)
+    st.markdown('<h1 class="login-title">ICI FACTURE 2025 AV </h1>', unsafe_allow_html=True)
+    st.markdown('<p class="login-subtitle">Chan Foui et Fils AI </p>', unsafe_allow_html=True)
     
     # Indicateur de sécurité
     col_status = st.columns(3)
@@ -3723,3 +3723,4 @@ with st.container():
     """, unsafe_allow_html=True)
     
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+
