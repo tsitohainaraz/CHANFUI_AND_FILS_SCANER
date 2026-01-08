@@ -1691,10 +1691,10 @@ st.markdown(f"""
 SHEET_ID = "1h4xT-cw9Ys1HbkhMWVtRnDOxsZ0fBOaskjPgRyIj3K8"
 
 SHEET_GIDS = {
-    "FACTURE EN COMPTE": 0,
-    "BDC LEADERPRICE": 581432835,
-    "BDC S2M": 581432835,
-    "BDC ULYS": 581432835
+    "FACTURE EN COMPTE": 541435939,
+    "BDC LEADERPRICE": 541435939,
+    "BDC S2M": 541435939,
+    "BDC ULYS": 541435939
 }
 
 # ============================================================
@@ -3723,4 +3723,5 @@ with st.container():
     """, unsafe_allow_html=True)
     
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+
 
