@@ -2977,7 +2977,7 @@ if st.session_state.uploaded_image and st.session_state.image_preview_visible:
     col_img, col_info = st.columns([2, 1])
     
     with col_img:
-        st.image(st.session_state.uploaded_image, use_column_width=True)
+        st.image(st.session_state.uploaded_image, use_container_width=True)
     
     with col_info:
         st.markdown(f"""
@@ -3747,7 +3747,3 @@ with st.container():
     """, unsafe_allow_html=True)
     
     st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
-
-
-
-
